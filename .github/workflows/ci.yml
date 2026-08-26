@@ -1,0 +1,50 @@
+# MINITOK Client CI Pipeline
+# Runs tests and security scan on push to master
+
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  # ── Job 1: Test ──
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        node-version: [18, 20, 22]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+  # ── Job 2: Security scan ──
+  security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for secrets in code
+        run: |
+          echo "Scanning for leaked secrets..."
+          ! grep -rn "sk_live_\|sk_test_\|whsec_\|BEGIN PRIVATE KEY\|BEGIN RSA PRIVATE" src/ || { echo "SECRETS FOUND IN CODE"; exit 1; }
+          echo "No secrets found in source code ✓"
+
+      - name: Check for project data in evolution upload
+        run: |
+          echo "Verifying evolution upload boundary..."
+          ! grep -rn "goal\|summary\|source_code\|file_path\|prompt" src/evolution/upload.js | grep -v "// " | grep -v "Forbidden" | grep -v "reject" || { echo "WARNING: possible project data in upload"; exit 1; }
+          echo "Evolution upload boundary ✓"

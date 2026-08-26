@@ -1,0 +1,91 @@
+"use strict";
+
+const { loadConfig } = require("../../config/loader");
+const { detectAvailableProviders } = require("../../llm/provider");
+const { listModels, discoverModels, formatModel } = require("../../llm/models");
+
+function register(program) {
+  program
+    .command("models [provider]")
+    .description("List available LLM models (anthropic, openai, google, openrouter, or custom)")
+    .option("--discover", "Fetch live model list from provider APIs (requires API keys)")
+    .action(async (provider, opts) => {
+      try {
+        const config = loadConfig();
+        const available = await detectAvailableProviders(config);
+
+        if (opts.discover) {
+          console.log("🔍 Discovering models from provider APIs...\n");
+          const result = await discoverModels(config.providers || {});
+
+          for (const [prov, liveIds] of Object.entries(result.live)) {
+            if (Array.isArray(liveIds) && typeof liveIds[0] === "object") {
+              // OpenRouter: rich model objects
+              console.log(`✅ ${prov.toUpperCase()} (${liveIds.length} models — live from API)`);
+              for (const m of liveIds.slice(0, 50)) {
+                const ctx = m.context_window ? (m.context_window >= 1000000 ? `${(m.context_window/1048576).toFixed(1)}M` : `${(m.context_window/1000).toFixed(0)}K`) : "?";
+                const reasoning = m.supported_parameters?.includes("reasoning_effort") ? " 🧠" : "";
+                console.log(`  ${m.id.padEnd(48)} ${(m.display||m.id).substring(0,24).padEnd(24)} [${ctx}]${reasoning}`);
+              }
+              if (liveIds.length > 50) console.log(`  ... and ${liveIds.length - 50} more`);
+            } else {
+              // Simple string arrays
+              const provAvail = available.includes(prov);
+              const icon = provAvail ? "✅" : "❌";
+              console.log(`${icon} ${prov.toUpperCase()} (${liveIds.length} models)`);
+              const catalogModels = listModels(prov);
+              for (const id of liveIds) {
+                const cat = catalogModels.find(m => m.id === id);
+                if (cat) { console.log(formatModel(cat)); }
+                else { console.log(`  ${id.padEnd(32)} (not in catalog)`); }
+              }
+            }
+            console.log();
+          }
+
+          // Tier 3: Custom providers
+          for (const custom of result.custom) {
+            console.log(`🔧 ${custom.provider.toUpperCase()} (${custom.models.length} models — custom)`);
+            if (custom.base_url) console.log(`   endpoint: ${custom.base_url}`);
+            for (const m of custom.models) {
+              const ctx = m.context_window ? `${(m.context_window/1000).toFixed(0)}K` : "?";
+              const out = m.max_output ? `${(m.max_output/1000).toFixed(0)}K` : "?";
+              const reasoning = m.reasoning?.supported ? " 🧠" : "";
+              console.log(`  ${m.id.padEnd(32)} ${(m.display||m.id).substring(0,24).padEnd(24)} [${ctx} in, ${out} out]${reasoning}`);
+            }
+            console.log();
+          }
+
+          if (result.unknown.length > 0) {
+            console.log(`⚠️  ${result.unknown.length} model(s) found in API but not in catalog:`);
+            result.unknown.forEach(id => console.log(`  - ${id}`));
+            console.log("   These will work but lack metadata (context window, reasoning info).\n");
+          }
+        } else {
+          // Offline catalog display
+          const models = listModels(provider);
+          const grouped = {};
+          for (const m of models) {
+            grouped[m.provider] = grouped[m.provider] || [];
+            grouped[m.provider].push(m);
+          }
+
+          for (const [prov, modelList] of Object.entries(grouped)) {
+            const provAvail = available.includes(prov);
+            const icon = provAvail ? "✅" : "❌";
+            console.log(`${icon} ${prov.toUpperCase()} (${modelList.length} models)`);
+            modelList.forEach(m => console.log(formatModel(m)));
+            console.log();
+          }
+
+          console.log("💡 Use --discover to fetch live model list from provider APIs");
+          console.log("💡 Provider status: ✅ = API key configured, ❌ = not configured");
+        }
+      } catch (e) {
+        console.error(`❌ Error: ${e.message}`);
+        process.exitCode = 1;
+      }
+    });
+}
+
+module.exports = { register };

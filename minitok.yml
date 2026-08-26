@@ -1,0 +1,33 @@
+# minitok configuration
+# See docs/ARCHITECTURE.md for full schema reference.
+
+project:
+  name: "minitok-npm"
+  stack: generic
+
+roles:
+  plan:
+    adapter: claude
+    effort: medium
+  review:
+    adapter: claude
+    effort: medium
+  work:
+    adapter: claude
+    effort: medium
+  intel:
+    adapter: claude
+    effort: medium
+
+budget:
+  token_budget: 500000
+  max_cycles: 3
+
+execution:
+  max_retries: 3
+  timeout_sec: 600
+  research_enabled: true
+
+commit:
+  enabled: false
+  auto_message: true

@@ -1,0 +1,148 @@
+"use strict";
+
+/**
+ * Config loader — loads and validates minitok.yml.
+ * Priority: defaults → global → local → env vars → CLI overrides.
+ */
+
+const fs = require("fs");
+const path = require("path");
+const os = require("os");
+const yaml = require("js-yaml");
+const { ConfigError } = require("../core/errors");
+
+const ENV_PREFIX = "MINITOK_";
+const _ROLE_KEYS = new Set(["plan", "review", "work", "intel"]);
+
+const DEFAULTS = {
+  offline: false,
+  project: { name: "unknown", stack: "generic" },
+  roles: {
+    plan: { adapter: "claude", model: "", effort: "medium", reasoning: null, thinking_budget: 0, tools: ["Read", "Write", "Edit"], fallback_model: "", fallback: [], variant: null, mode: "tui", timeout_sec: 300 },
+    review: { adapter: "claude", model: "", effort: "medium", reasoning: null, thinking_budget: 0, tools: ["Read", "Write", "Edit"], fallback_model: "", fallback: [], variant: null, mode: "tui", timeout_sec: 300 },
+    work: { adapter: "claude", model: "", effort: "medium", reasoning: null, thinking_budget: 0, tools: ["Read", "Write", "Edit"], fallback_model: "", fallback: [], variant: null, mode: "tui", timeout_sec: 300 },
+    intel: { adapter: "claude", model: "", effort: "medium", reasoning: null, thinking_budget: 0, tools: ["Read", "Write", "Edit"], fallback_model: "", fallback: [], variant: null, mode: "tui", timeout_sec: 300 },
+  },
+  budget: { max_cycles: 0, token_budget: 500000 },
+  execution: {
+    max_retries: 3,
+    timeout_sec: 600,
+    retry_backoff_sec: 90.0,
+    retry_max_sec: 1800.0,
+    research_enabled: true,
+    search: { web: { endpoint: "", api_key: "" }, github: { token: "", base: "" } },
+  },
+  paths: { state_dir: ".minitok", evidence_dir: ".minitok/evidence" },
+  plugins: { enabled: false },
+  coding: { enabled: false, adapter: "commandcode" },
+  review_loop: { enabled: false, auto_next_task: false, auto_repair: false, max_failures: 0, escalate_confidence_below: 0.7, escalate_on_security_findings: true },
+  executor: { enabled: false, adapter: "commandcode" },
+  validation: { enabled: false, confidence_threshold: 0.8, max_changed_files: 20 },
+  commit: { enabled: false, auto_message: true, require_validation: true },
+};
+
+function deepMerge(base, override) {
+  const result = { ...base };
+  for (const [key, value] of Object.entries(override)) {
+    if (key in result && typeof result[key] === "object" && !Array.isArray(result[key]) && typeof value === "object" && !Array.isArray(value)) {
+      result[key] = deepMerge(result[key], value);
+    } else {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
+/**
+ * Safely coerce a string value to its native type.
+ * Handles null/undefined/empty to prevent TypeError.
+ */
+function coerceValue(value) {
+  if (value == null || value === "") return null;
+  const s = String(value);
+  if (["true", "yes", "1"].includes(s.toLowerCase())) return true;
+  if (["false", "no", "0"].includes(s.toLowerCase())) return false;
+  const int = parseInt(s, 10);
+  if (!isNaN(int) && String(int) === s) return int;
+  const float = parseFloat(s);
+  if (!isNaN(float) && String(float) === s) return float;
+  return s;
+}
+
+function loadEnvVars() {
+  const result = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (!key.startsWith(ENV_PREFIX)) continue;
+    const configKey = key.slice(ENV_PREFIX.length).toLowerCase();
+    const parts = configKey.split("_");
+    let nested = result;
+    for (let i = 0; i < parts.length - 1; i++) {
+      if (!nested[parts[i]] || typeof nested[parts[i]] !== "object") nested[parts[i]] = {};
+      nested = nested[parts[i]];
+    }
+    nested[parts[parts.length - 1]] = coerceValue(value);
+
+    if (_ROLE_KEYS.has(parts[0])) {
+      if (!result.roles) result.roles = {};
+      const roleNested = {};
+      let cur = roleNested;
+      for (let i = 0; i < parts.length - 1; i++) {
+        cur[parts[i]] = {};
+        cur = cur[parts[i]];
+      }
+      cur[parts[parts.length - 1]] = coerceValue(value);
+      result.roles = deepMerge(result.roles, roleNested);
+    }
+  }
+  return result;
+}
+
+function loadYaml(filePath) {
+  try {
+    const data = fs.readFileSync(filePath, "utf-8");
+    // 🔒 Use safe schema to prevent YAML code execution attacks (!!js/function etc.)
+    const parsed = yaml.load(data, { schema: yaml.DEFAULT_SAFE_SCHEMA });
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch (e) {
+    if (e.code === "ENOENT") return {};
+    throw new ConfigError(`Invalid YAML in ${filePath}: ${e.message}`);
+  }
+}
+
+function loadConfig(configPath, overrides) {
+  let raw = {};
+
+  // 2. User global config
+  const globalPath = path.join(os.homedir(), ".config", "minitok", "config.yml");
+  raw = deepMerge(raw, loadYaml(globalPath));
+
+  // 3. Project local config — resolve from explicit path, then repoRoot, then CWD
+  const candidates = [
+    configPath,
+    path.join(overrides?.repoRoot || process.cwd(), "minitok.yml"),
+    "minitok.yml",
+  ].filter(Boolean);
+  let resolved = false;
+  for (const candidate of candidates) {
+    if (resolved) break;
+    try {
+      const stat = fs.statSync(candidate);
+      if (stat.isFile()) {
+        raw = deepMerge(raw, loadYaml(candidate));
+        resolved = true;
+      }
+    } catch {}
+  }
+
+  // 4. Environment variables
+  raw = deepMerge(raw, loadEnvVars());
+
+  // 5. CLI overrides
+  if (overrides) raw = deepMerge(raw, overrides);
+
+  // Merge with defaults
+  const config = deepMerge(DEFAULTS, raw);
+  return config;
+}
+
+module.exports = { loadConfig, deepMerge, coerceValue, DEFAULTS };
