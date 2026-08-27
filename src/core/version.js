@@ -1,7 +1,7 @@
 "use strict";
 
 /** Core version constants. */
-const MINITOK_VERSION = "1.1.4";
+const MINITOK_VERSION = "1.3.0";
 const STATE_SCHEMA_VERSION = 1;
 const ADAPTER_PROTOCOL_VERSION = 1;
 

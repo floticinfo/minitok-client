@@ -29,6 +29,7 @@ const GateState = Object.freeze({
   EXPIRED: "EXPIRED",
   OFFLINE_GRACE: "OFFLINE_GRACE",
   CLOCK_ROLLBACK: "CLOCK_ROLLBACK",
+  INSTALLATION_MISMATCH: "INSTALLATION_MISMATCH", // PHASE 13
 });
 
 const GateMessages = Object.freeze({
@@ -39,6 +40,7 @@ const GateMessages = Object.freeze({
   [GateState.EXPIRED]: "Your minitok entitlement has expired. Renew your subscription to continue.",
   [GateState.OFFLINE_GRACE]: "minitok is operating in offline grace mode.",
   [GateState.CLOCK_ROLLBACK]: "System clock appears to have been set back. Please correct your system clock.",
+  [GateState.INSTALLATION_MISMATCH]: "This entitlement was issued for a different installation. Run 'minitok activate <your-license-key>' to activate on this machine.",
 });
 
 function _defaultEntitlementDir() {
@@ -112,8 +114,8 @@ function checkEntitlement(options = {}) {
   const store = new EntitlementStore(entitlementDir);
   const artifact = options._loadArtifact ? options._loadArtifact() : store.load();
 
-  // Cryptographic verification
-  const verification = verifyEntitlement(artifact, now);
+  // Cryptographic verification (includes installation binding for PHASE 13)
+  const verification = verifyEntitlement(artifact, now, { entitlementDir });
 
   if (verification.state === EntitlementState.MISSING) {
     return { allowed: false, state: GateState.MISSING, message: GateMessages[GateState.MISSING] };
@@ -124,12 +126,24 @@ function checkEntitlement(options = {}) {
   if (verification.state === EntitlementState.INVALID_SIGNATURE) {
     return { allowed: false, state: GateState.INVALID_SIGNATURE, message: GateMessages[GateState.INVALID_SIGNATURE] };
   }
+  if (verification.state === EntitlementState.INSTALLATION_MISMATCH) {
+    return { allowed: false, state: GateState.INSTALLATION_MISMATCH, message: GateMessages[GateState.INSTALLATION_MISMATCH] };
+  }
   if (verification.state === EntitlementState.EXPIRED) {
     // Offline grace: last_validated_at within grace window?
     if (gateState.last_validated_at) {
       const lastValidatedMs = new Date(gateState.last_validated_at).getTime();
       const graceExpiryMs = lastValidatedMs + OFFLINE_GRACE_MS;
       if (currentTimeMs < graceExpiryMs) {
+        // PHASE 13: Even during offline grace, installation binding must match.
+        // For legacy entitlements (no installation_id), skip the binding check.
+        if (!verification.legacy && verification.payload && verification.payload.installation_id) {
+          const { loadLocalInstallationId } = require("./verify");
+          const localId = loadLocalInstallationId(entitlementDir);
+          if (!localId || verification.payload.installation_id !== localId) {
+            return { allowed: false, state: GateState.INSTALLATION_MISMATCH, message: GateMessages[GateState.INSTALLATION_MISMATCH] };
+          }
+        }
         const daysRemaining = Math.ceil((graceExpiryMs - currentTimeMs) / (24 * 60 * 60 * 1000));
         return { allowed: true, state: GateState.OFFLINE_GRACE, message: `${GateMessages[GateState.OFFLINE_GRACE]} ${daysRemaining} day(s) remaining.`, entitlement: verification.entitlement, graceDaysRemaining: daysRemaining };
       }

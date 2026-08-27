@@ -1,3 +1,21 @@
+# Changelog
+## 1.3.0 (2026-08-27)
+
+### Added
+- Installation-bound entitlements: entitlements are now cryptographically bound to the installing machine via installation_id
+- Cross-machine entitlement copy protection: copied entitlements from another machine are rejected
+- Installation binding enforced during offline grace mode
+- INSTALLATION_MISMATCH gate state for installation binding failures
+- Legacy entitlement backward compatibility (pre-1.3.0 entitlements accepted until expiry)
+
+### Changed
+- Version consistency update to 1.3.0
+
+### Security
+- installation_id is part of the Ed25519 signed payload
+- Ed25519 signature covers installation_id, preventing tampering
+- Offline grace mode enforces installation binding (cannot bypass by going offline)
+
 ## 1.2.0 (2026-08-27)
 
 ### Changed

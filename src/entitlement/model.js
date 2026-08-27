@@ -7,9 +7,10 @@
  * MINITOK's runtime access. This module defines the schema and provides
  * deterministic canonicalization for signature verification.
  *
- * Signed payload structure:
+ * Signed payload structure (new format with installation binding):
  * {
  *   entitlement_id,   // UUID
+ *   installation_id,  // UUID — PHASE 13 installation binding
  *   plan_id,          // string
  *   features,         // string[]
  *   max_devices,      // positive integer
@@ -17,6 +18,12 @@
  *   expires_at,       // ISO 8601 UTC
  *   key_id            // string
  * }
+ *
+ * BACKWARD COMPATIBILITY:
+ * Old entitlements (without installation_id) are still accepted for
+ * validation but will be flagged as LEGACY. They retain their original
+ * behavior until natural expiration. Installation binding is enforced
+ * for new-format entitlements only.
  */
 
 const VALID_PLAN_IDS = ["pro", "team", "enterprise", "trial"];
@@ -54,6 +61,11 @@ function validatePayload(payload) {
   }
 
   const required = ["entitlement_id", "plan_id", "features", "max_devices", "issued_at", "expires_at", "key_id"];
+  // PHASE 13: installation_id is now part of the signed payload.
+  // For backward compatibility, old entitlements without it are accepted
+  // but flagged. New entitlements MUST have it.
+  const hasInstallationId = "installation_id" in payload;
+
   for (const field of required) {
     if (!(field in payload)) {
       return { valid: false, reason: `Missing required field: ${field}` };
@@ -61,7 +73,7 @@ function validatePayload(payload) {
   }
 
   // Check for unexpected fields
-  const allowed = new Set(required);
+  const allowed = new Set([...required, "installation_id"]);
   for (const key of Object.keys(payload)) {
     if (!allowed.has(key)) {
       return { valid: false, reason: `Unexpected field: ${key}` };
@@ -102,7 +114,14 @@ function validatePayload(payload) {
     return { valid: false, reason: "key_id must be a non-empty string" };
   }
 
-  return { valid: true, payload };
+  // PHASE 13: Validate installation_id if present (new format)
+  if (hasInstallationId) {
+    if (!isValidUUID(payload.installation_id)) {
+      return { valid: false, reason: "Invalid installation_id format" };
+    }
+  }
+
+  return { valid: true, payload, legacy: !hasInstallationId };
 }
 
 /**
@@ -138,7 +157,7 @@ function validateArtifact(artifact) {
     return { valid: false, reason: payloadResult.reason };
   }
 
-  return { valid: true, payload: artifact.payload, signature: artifact.signature, key_id: artifact.key_id };
+  return { valid: true, payload: artifact.payload, signature: artifact.signature, key_id: artifact.key_id, legacy: payloadResult.legacy === true };
 }
 
 /**
