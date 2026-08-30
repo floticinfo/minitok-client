@@ -38,7 +38,13 @@ function runVerification(repoRoot, options = {}) {
 }
 
 function runProcess(command, args, repoRoot, options = {}) {
-  return runProcess(command, args, repoRoot, options);
+  const started = Date.now();
+  try {
+    const output = execFileSync(command, args, { cwd: repoRoot, encoding: "utf-8", timeout: options.timeout_ms || 120000, stdio: ["ignore", "pipe", "pipe"] });
+    return { status: "passed", command: [command, ...args].join(" "), output: output.slice(-4000), duration_ms: Date.now() - started, exit_code: 0 };
+  } catch (error) {
+    return { status: "failed", command: [command, ...args].join(" "), output: `${error.stdout || ""}${error.stderr || ""}`.slice(-4000), duration_ms: Date.now() - started, exit_code: typeof error.status === "number" ? error.status : 1 };
+  }
 }
 
 function verifyCommand(repoRoot, options = {}) {

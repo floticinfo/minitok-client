@@ -1,6 +1,6 @@
 "use strict";
 
-const FETCH_TIMEOUT_MS = 60000; // 60 second timeout for all LLM calls
+const FETCH_TIMEOUT_MS = 300000; // Allow slow reasoning providers up to five minutes
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024; // 2 MB max response body
 
 const { authManager, ALIAS_MAP } = require("../auth");
@@ -251,7 +251,8 @@ class CustomProvider extends LLMProvider {
     const body = { model, messages: messages.map(m => ({ role: m.role, content: m.content })), max_tokens: options.max_tokens || 4096 };
     const headers = { "Content-Type": "application/json", ...(auth.headers || {}) };
     if (apiKey && !headers.Authorization) headers.Authorization = "Bearer " + apiKey;
-    const res = await fetchWithTimeout(`${this.baseUrl}/v1/chat/completions`, { method: "POST", headers, body: JSON.stringify(body) });
+    const apiPath = this.baseUrl.endsWith("/v1") ? "/chat/completions" : "/v1/chat/completions";
+    const res = await fetchWithTimeout(`${this.baseUrl}${apiPath}`, { method: "POST", headers, body: JSON.stringify(body) });
     if (!res.ok) throw new Error(`${this.name} error ${res.status}: ${await res.text()}`);
     const data = await res.json();
     return { text: data.choices?.[0]?.message?.content || "", model: data.model || model, usage: data.usage || {}, tokens: _countTokens(data.usage) };
