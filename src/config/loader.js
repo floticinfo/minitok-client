@@ -19,10 +19,10 @@ const DEFAULTS = {
   default_provider: "",
   project: { name: "unknown", stack: "generic" },
   roles: {
-    plan: { provider: "", adapter: "", model: "", effort: "medium", reasoning: null, thinking_budget: 0, tools: ["Read", "Write", "Edit"], fallback_model: "", fallback: [], variant: null, mode: "tui", timeout_sec: 300 },
-    review: { provider: "", adapter: "", model: "", effort: "medium", reasoning: null, thinking_budget: 0, tools: ["Read", "Write", "Edit"], fallback_model: "", fallback: [], variant: null, mode: "tui", timeout_sec: 300 },
-    work: { provider: "", adapter: "", model: "", effort: "medium", reasoning: null, thinking_budget: 0, tools: ["Read", "Write", "Edit"], fallback_model: "", fallback: [], variant: null, mode: "tui", timeout_sec: 300 },
-    intel: { provider: "", adapter: "", model: "", effort: "medium", reasoning: null, thinking_budget: 0, tools: ["Read", "Write", "Edit"], fallback_model: "", fallback: [], variant: null, mode: "tui", timeout_sec: 300 },
+    plan: { provider: "", adapter: "claude", model: "", effort: "medium", reasoning: null, thinking_budget: 0, tools: ["Read", "Write", "Edit"], fallback_model: "", fallback: [], variant: null, mode: "tui", timeout_sec: 300 },
+    review: { provider: "", adapter: "claude", model: "", effort: "medium", reasoning: null, thinking_budget: 0, tools: ["Read", "Write", "Edit"], fallback_model: "", fallback: [], variant: null, mode: "tui", timeout_sec: 300 },
+    work: { provider: "", adapter: "claude", model: "", effort: "medium", reasoning: null, thinking_budget: 0, tools: ["Read", "Write", "Edit"], fallback_model: "", fallback: [], variant: null, mode: "tui", timeout_sec: 300 },
+    intel: { provider: "", adapter: "claude", model: "", effort: "medium", reasoning: null, thinking_budget: 0, tools: ["Read", "Write", "Edit"], fallback_model: "", fallback: [], variant: null, mode: "tui", timeout_sec: 300 },
   },
   budget: { max_cycles: 0, token_budget: 500000 },
   execution: {

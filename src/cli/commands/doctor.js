@@ -57,7 +57,9 @@ async function cmdDoctor() {
   console.log(`\nRoles:`);
   for (const [role, cfg] of Object.entries(config.roles)) {
     const providerName = resolveProviderName(config, role);
-    const providerOk = providers.includes(providerName) || cfg.adapter === "mock";
+    const providerAliases = { claude: "anthropic", gpt: "openai", gemini: "google" };
+    const availableProviderName = providerAliases[providerName] || providerName;
+    const providerOk = providers.includes(availableProviderName) || cfg.adapter === "mock";
     allOk = check(`  ${role}`, providerOk, `provider=${providerName || "unset"}${providerOk ? "" : " (provider not available)"}`) && allOk;
   }
 

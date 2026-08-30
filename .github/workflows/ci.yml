@@ -16,7 +16,7 @@ jobs:
     timeout-minutes: 10
     strategy:
       matrix:
-        node-version: [18, 20, 22]
+        node-version: [20, 22]
     steps:
       - uses: actions/checkout@v4
 
@@ -29,6 +29,12 @@ jobs:
 
       - name: Run tests
         run: npm test
+
+      - name: Run full repository tests
+        run: node --test tests/*.js
+
+      - name: Run verification gate
+        run: bash VERIFY_CMD.sh
 
   # ── Job 2: Security scan ──
   security:

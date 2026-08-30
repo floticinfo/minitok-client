@@ -1,6 +1,6 @@
 "use strict";
 
-const { MINITOK_VERSION } = require("./core/version");
+const { minitok_VERSION: MINITOK_VERSION } = require("./core/version");
 const { WorkspaceManager } = require("./workspace/manager");
 const { loadConfig } = require("./config/loader");
 const { createProvider, detectAvailableProviders } = require("./llm/provider");

@@ -30,13 +30,14 @@ function createIsolatedWorkspace(repoRoot, isolationRoot) {
 }
 
 function applyWorkspaceDiff(repoRoot, isolatedRoot) {
-  const patch = runGit(isolatedRoot, ["diff", "--binary"]);
+  runGit(isolatedRoot, ["add", "-A"]);
+  const patch = runGit(isolatedRoot, ["diff", "--cached", "--binary"]);
   if (!patch) return { applied: false, files: [] };
   const patchFile = path.join(os.tmpdir(), `minitok-patch-${process.pid}.diff`);
   try {
     fs.writeFileSync(patchFile, patch, "utf8");
     execFileSync("git", ["apply", "--index", "--whitespace=nowarn", patchFile], { cwd: repoRoot, stdio: ["pipe", "pipe", "pipe"] });
-    return { applied: true, files: runGit(isolatedRoot, ["diff", "--name-only"]).split("\n").filter(Boolean) };
+    return { applied: true, files: runGit(isolatedRoot, ["diff", "--cached", "--name-only"]).split("\n").filter(Boolean) };
   } finally {
     fs.rmSync(patchFile, { force: true });
   }

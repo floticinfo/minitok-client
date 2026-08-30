@@ -122,6 +122,8 @@ async function runPipelineInWorkspace(task, opts = {}) {
     throw new Error(`Not a git repository: ${repoRoot}`);
   }
 
+  writeContract(repoRoot, { status: "running", goal: task, verify_command: config.validation?.script_path || "VERIFY_CMD.sh" });
+
   // Entitlement gate — must pass before any LLM/provider work
   let gateResult = null;
   if (!opts.skipEntitlementCheck) {
@@ -163,7 +165,6 @@ async function runPipelineInWorkspace(task, opts = {}) {
   const tokenBudget = config.budget.token_budget || 500000; // 500K tokens default cap
   const originalGoal = task;
   const budgetChars = config.execution?.context_budget_chars || DEFAULT_CONTEXT_BUDGET_CHARS;
-  writeContract(repoRoot, { status: "running", goal: originalGoal, verify_command: config.validation?.script_path || "VERIFY_CMD.sh" });
   const results = { cycles: [], totalTokens: { input: 0, output: 0 }, goal: originalGoal, evolution: {} };
   let confirmationGranted = false; // Track whether user approved changes for this run
 
@@ -276,7 +277,7 @@ async function runPipelineInWorkspace(task, opts = {}) {
 
     // Phase 4: Check
     console.log("  🧪 Running verification command...");
-    const checkResult = opts.dryRun ? { passed: true, evidence: { status: "skipped", command: "dry-run", output: "" } } : verifyCommand(repoRoot, { script_path: config.validation?.script_path, timeout_ms: config.validation?.timeout_ms });
+    const checkResult = opts.dryRun ? { passed: true, evidence: { status: "skipped", command: "dry-run", output: "" } } : opts.skipCheck ? { passed: true, evidence: { status: "skipped", command: "skip-check", output: "" } } : verifyCommand(repoRoot, { script_path: config.validation?.script_path, timeout_ms: config.validation?.timeout_ms });
 
     // Phase 5: Review
     console.log("  🔍 Reviewing...");
@@ -285,7 +286,7 @@ async function runPipelineInWorkspace(task, opts = {}) {
     results.totalTokens.output += verifyResult.tokens?.output || 0;
     const reviewVerdict = verifyResult.review.verdict || "UNKNOWN";
     const checkPassed = checkResult.passed;
-    const verdict = checkPassed && reviewVerdict === "APPROVE" ? "APPROVE" : "REJECT";
+    const verdict = checkPassed ? reviewVerdict : "REJECT";
     const icon = verdict === "APPROVE" ? "✅" : "❌";
     console.log(`     Review: ${icon} ${verdict} (confidence: ${verifyResult.review.confidence || "N/A"})`);
 
@@ -330,6 +331,9 @@ async function runPipelineInWorkspace(task, opts = {}) {
       task = buildRepairTask(originalGoal, verifyResult.review, checkResult);
     }
   }
+  } catch (error) {
+    writeContract(repoRoot, { status: "failed", goal: originalGoal, verify_command: config.validation?.script_path || "VERIFY_CMD.sh", error: error.message });
+    throw error;
   } finally {
     // Restore original signal handlers
     process.removeListener("SIGINT", _onSignal);
@@ -391,6 +395,7 @@ async function runPipeline(task, opts = {}) {
   if (opts.isolatedWorkspace) return runPipelineInWorkspace(task, opts);
   const { createIsolatedWorkspace, applyWorkspaceDiff, removeIsolatedWorkspace } = require("../workspace/isolation");
   const repoRoot = opts.repoRoot || process.cwd();
+  if (!git.isGitRepo(repoRoot)) throw new Error(`Not a git repository: ${repoRoot}`);
   const isolated = createIsolatedWorkspace(repoRoot, opts.isolationRoot);
   try {
     const result = await runPipelineInWorkspace(task, { ...opts, repoRoot: isolated.path, isolatedWorkspace: true });

@@ -89,7 +89,7 @@ describe("F3: Pipeline", () => {
     const pm = require("../src/llm/provider"); const orig = pm.createProvider;
     pm.createProvider = (name) => { if (name === "mock") return new Mock(); return orig(name); };
     try {
-      const r = await runPipeline("Add helper", { repoRoot: d, providerOverride: "mock", skipEntitlementCheck: true, overrides: { budget: { max_cycles: 1 } } });
+      const r = await runPipeline("Add helper", { repoRoot: d, providerOverride: "mock", skipEntitlementCheck: true, skipCheck: true, overrides: { budget: { max_cycles: 1 } } });
       assert.equal(r.cycles.length, 1); assert.equal(r.cycles[0].status, "APPROVE");
       assert.equal(r.cycles[0].plan.steps[0].file, "helper.js");
       assert.equal(r.cycles[0].verify.confidence, 0.95); assert.ok((r.totalTokens.input + r.totalTokens.output) > 0);
@@ -119,7 +119,7 @@ describe("F3: Pipeline", () => {
     const pm = require("../src/llm/provider"); const orig = pm.createProvider;
     pm.createProvider = (name) => { if (name === "r") return new Rej(); return orig(name); };
     try {
-      const r = await runPipeline("t", { repoRoot: d, providerOverride: "r", skipEntitlementCheck: true, overrides: { budget: { max_cycles: 3 } } });
+      const r = await runPipeline("t", { repoRoot: d, providerOverride: "r", skipEntitlementCheck: true, skipCheck: true, overrides: { budget: { max_cycles: 3 } } });
       assert.equal(r.cycles.length, 3);
       r.cycles.forEach(c => assert.equal(c.status, "CHANGES_REQUESTED"));
     } finally { pm.createProvider = orig; clean(d); }

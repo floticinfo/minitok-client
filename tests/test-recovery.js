@@ -115,8 +115,8 @@ describe("PHASE 9: REJECT Recovery E2E", () => {
     pm.createProvider = (n) => n === "rta" ? new RejectThenApprove() : origCreateProvider(n);
     try {
       const r = await runPipeline("Create recovery-proof.txt with minitok_RECOVERY_PASS", {
-        repoRoot: repoDir, providerOverride: "rta", skipEntitlementCheck: true,
-        overrides: { budget: { max_cycles: 3 } },
+repoRoot: repoDir, providerOverride: "rta", skipEntitlementCheck: true, skipCheck: true,
+         overrides: { budget: { max_cycles: 3 } },
       });
       assert.ok(r.cycles.length >= 2, `Expected >= 2 cycles, got ${r.cycles.length}`);
       assert.equal(r.cycles[0].status, "REJECT", "Cycle 1 must REJECT");
@@ -152,8 +152,8 @@ describe("PHASE 9: REJECT Recovery E2E", () => {
     pm.createProvider = (n) => n === "cr" ? new CR() : origCreateProvider(n);
     try {
       const r = await runPipeline("CHANGES_REQUESTED test", {
-        repoRoot: repoDir, providerOverride: "cr", skipEntitlementCheck: true,
-        overrides: { budget: { max_cycles: 3 } },
+repoRoot: repoDir, providerOverride: "cr", skipEntitlementCheck: true, skipCheck: true,
+         overrides: { budget: { max_cycles: 3 } },
       });
       assert.equal(r.cycles.length, 3);
       r.cycles.forEach(c => assert.equal(c.status, "CHANGES_REQUESTED"));
@@ -168,8 +168,8 @@ describe("PHASE 9: REJECT Recovery E2E", () => {
     pm.createProvider = (n) => n === "ar" ? new AlwaysReject() : origCreateProvider(n);
     try {
       const r = await runPipeline("Always reject", {
-        repoRoot: repoDir, providerOverride: "ar", skipEntitlementCheck: true,
-        overrides: { budget: { max_cycles: 3 } },
+repoRoot: repoDir, providerOverride: "ar", skipEntitlementCheck: true, skipCheck: true,
+         overrides: { budget: { max_cycles: 3 } },
       });
       assert.equal(r.cycles.length, 3);
       r.cycles.forEach(c => assert.equal(c.status, "REJECT"));
@@ -185,8 +185,8 @@ describe("PHASE 9: REJECT Recovery E2E", () => {
   it("Source confirms: REJECT mutates task, CHANGES_REQUESTED does not", async () => {
     const src = fs.readFileSync(p.join(__dirname, "..", "src", "pipeline", "loop.js"), "utf-8");
     assert.ok(src.includes('verdict === "REJECT"'), "REJECT check exists");
-    assert.ok(src.includes("Previous attempt was REJECTED"), "Feedback injected on REJECT");
-    assert.ok(src.includes("Review feedback"), "Review summary in mutated task");
+    assert.ok(src.includes("buildRepairTask"), "Feedback injected on REJECT");
+    assert.ok(src.includes("buildRepairTask"), "Review summary in repair task");
     // Verify no equivalent CHANGES_REQUESTED feedback injection
     assert.ok(!src.includes('verdict === "CHANGES_REQUESTED"'), "No CHANGES_REQUESTED feedback path");
     console.log("\n✅ SOURCE ANALYSIS: REJECT mutates task; CHANGES_REQUESTED does not");

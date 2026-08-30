@@ -13,7 +13,8 @@ describe("minitok contract state", () => {
     writeContract(root, { status: "running", goal: "test", verify_command: "VERIFY_CMD.sh" });
     const contract = readContract(root);
     assert.equal(contract.status, "running");
-    assert.equal(contract.goal, "test");
+    assert.equal(contract.goal, undefined);
+    assert.match(contract.goal_id, /^[a-f0-9]{16}$/);
     assert.equal(path.dirname(path.join(root, ".minitok", "contracts", "task-contract.json")), path.join(root, ".minitok", "contracts"));
     fs.rmSync(root, { recursive: true, force: true });
   });
