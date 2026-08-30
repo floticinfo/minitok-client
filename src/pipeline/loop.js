@@ -13,6 +13,7 @@ const { verify } = require("./verifier");
 const { verifyCommand } = require("./check");
 const { buildRepairTask } = require("./repair");
 const { writeContract, writeContextManifest } = require("../state/contracts");
+const { recordRunEvidence } = require("../run-evidence");
 const { generateNextTask } = require("./next_task");
 const { compactText, DEFAULT_CONTEXT_BUDGET_CHARS } = require("../context/compaction");
 const { KnowledgeStore } = require("../evolution/knowledge");
@@ -388,6 +389,27 @@ async function runPipelineInWorkspace(task, opts = {}) {
 
   results.success = success;
   writeContract(repoRoot, { status: success ? "completed" : "failed", goal: originalGoal, verify_command: config.validation?.script_path || "VERIFY_CMD.sh", cycles: results.cycles.length, success });
+  try {
+    await recordRunEvidence({
+      workspaceRoot: repoRoot,
+      task: originalGoal,
+      dry_run: Boolean(opts.dryRun),
+      stages: {
+        selected_plan: results.cycles.at(-1)?.plan || null,
+        work: results.cycles.at(-1)?.implement || null,
+        review: results.cycles.at(-1)?.review || null,
+      },
+      changed_files: [],
+      verification: {
+        commands: results.cycles.map(c => c.check?.command).filter(Boolean),
+        exit_status: results.cycles.at(-1)?.check?.exit_code ?? null,
+        passed: results.cycles.at(-1)?.check?.status === "passed",
+      },
+      outcome: success ? "success" : "verification-failed",
+    });
+  } catch (error) {
+    console.warn(`⚠️  Could not save run evidence: ${error.message}`);
+  }
   return results;
 }
 

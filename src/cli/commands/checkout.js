@@ -1,10 +1,11 @@
 const https = require("https");
 const http = require("http");
 const { resolveServerUrl } = require("./server-config");
+const { loadCustomerToken } = require("../../auth/customer-token");
 
 async function cmdCheckout(opts) {
   const serverUrl = resolveServerUrl({ cliServer: opts?.server });
-  const token = opts?.token;
+  const token = opts?.token || loadCustomerToken();
   if (!token) {
     console.error("Error: Authentication token required.");
     console.error("Usage: minitok checkout --token <JWT> [--plan pro]");

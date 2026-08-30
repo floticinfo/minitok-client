@@ -10,6 +10,7 @@
 const https = require("https");
 const http = require("http");
 const { resolveServerUrl } = require("./server-config");
+const { loadCustomerToken } = require("../../auth/customer-token");
 
 /**
  * Retrieve the activation key for the authenticated customer.
@@ -21,7 +22,7 @@ const { resolveServerUrl } = require("./server-config");
  */
 async function cmdActivationKey(opts) {
   const serverUrl = resolveServerUrl({ cliServer: opts?.server });
-  const token = opts?.token;
+  const token = opts?.token || loadCustomerToken();
   if (!token) {
     console.error("Error: Authentication token required.");
     console.error("Usage: minitok activation-key --token <JWT> [--payment <dodo_payment_id>]");
