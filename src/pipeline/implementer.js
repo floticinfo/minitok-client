@@ -45,18 +45,23 @@ async function implement(provider, planResult, repoContext, options = {}) {
     },
   ];
 
-  const result = await provider.complete(messages, {
-    model: options.model,
-    max_tokens: 8192,
-    temperature: 0.2,
-  });
-
   const { parseResponseJSON } = require("./json_utils");
+  const attempts = options.json_retry === false ? 1 : 2;
+  let result;
+  let parsedResult;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    const response = await provider.complete(messages, {
+      model: options.model,
+      max_tokens: options.max_tokens || 8192,
+      temperature: 0.2,
+    });
+    result = response;
+    parsedResult = parseResponseJSON(response.text, { error: "No JSON", raw: response.text });
+    if (parsedResult.valid || attempt === attempts) break;
+    messages.push({ role: "user", content: "Your previous response was not valid JSON. Return only the strict JSON object with a changes array; do not include markdown or explanation." });
+  }
 
-  let changes;
-  const { parsed, valid } = parseResponseJSON(result.text, { error: "No JSON", raw: result.text });
-  changes = valid ? parsed : { error: parsed.error || "Invalid JSON", raw: parsed.raw || result.text };
-
+  const changes = parsedResult.valid ? parsedResult.parsed : { error: parsedResult.parsed.error || "Invalid JSON", raw: parsedResult.parsed.raw || result.text };
   return { changes, tokens: result.tokens, model: result.model };
 }
 
