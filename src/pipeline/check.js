@@ -13,12 +13,21 @@ function getVerifyCommandPath(repoRoot, configuredPath) {
 }
 
 function runVerification(repoRoot, options = {}) {
-  const scriptPath = getVerifyCommandPath(repoRoot, options.script_path);
+  const configuredPath = options.script_path || "VERIFY_CMD.sh";
+  const scriptPath = getVerifyCommandPath(repoRoot, configuredPath);
+  const nodeVerifier = path.resolve(__dirname, "../../scripts/verify.mjs");
+  if (configuredPath === "VERIFY_CMD.mjs" || configuredPath === "scripts/verify.mjs") {
+    if (!fs.existsSync(nodeVerifier)) return { status: "missing", command: nodeVerifier, output: "Node verification script was not found", duration_ms: 0, exit_code: 1 };
+    return runProcess(process.execPath, [nodeVerifier], repoRoot, options);
+  }
   if (!fs.existsSync(scriptPath)) {
-    return { status: "missing", command: scriptPath, output: "VERIFY_CMD.sh is required and was not found", duration_ms: 0, exit_code: 1 };
+    return { status: "missing", command: scriptPath, output: "Verification script was not found", duration_ms: 0, exit_code: 1 };
   }
   const command = options.command || "bash";
-  const args = options.args || [scriptPath];
+  const executablePath = process.platform === "win32" && path.isAbsolute(scriptPath)
+    ? `/${scriptPath[0].toLowerCase()}${scriptPath.slice(2).replace(/\\/g, "/")}`
+    : scriptPath;
+  const args = options.args || [executablePath];
   const started = Date.now();
   try {
     const output = execFileSync(command, args, { cwd: repoRoot, encoding: "utf-8", timeout: options.timeout_ms || 120000, stdio: ["ignore", "pipe", "pipe"] });
@@ -26,6 +35,10 @@ function runVerification(repoRoot, options = {}) {
   } catch (error) {
     return { status: "failed", command: [command, ...args].join(" "), output: `${error.stdout || ""}${error.stderr || ""}`.slice(-4000), duration_ms: Date.now() - started, exit_code: typeof error.status === "number" ? error.status : 1 };
   }
+}
+
+function runProcess(command, args, repoRoot, options = {}) {
+  return runProcess(command, args, repoRoot, options);
 }
 
 function verifyCommand(repoRoot, options = {}) {

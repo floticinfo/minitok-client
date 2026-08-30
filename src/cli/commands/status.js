@@ -1,7 +1,7 @@
 "use strict";
 
 const { WorkspaceManager } = require("../../workspace/manager");
-const { loadConfig } = require("../../config/loader");
+const { loadConfig, resolveProviderName } = require("../../config/loader");
 const { detectAvailableProviders } = require("../../llm/provider");
 const { minitok_VERSION } = require("../../core/version");
 const git = require("../../git/operations");
@@ -81,7 +81,7 @@ async function cmdStatus() {
   console.log(`\nProviders: ${providers.length > 0 ? providers.join(", ") : "none detected"}`);
   console.log(`Roles:`);
   for (const [role, cfg] of Object.entries(config.roles)) {
-    console.log(`  ${role.padEnd(8)} → ${cfg.adapter}`);
+    console.log(`  ${role.padEnd(8)} → ${resolveProviderName(config, role) || "unset"}`);
   }
 
   return 0;

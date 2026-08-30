@@ -59,8 +59,15 @@ async function cmdDoctor() {
     const providerName = resolveProviderName(config, role);
     const providerAliases = { claude: "anthropic", gpt: "openai", gemini: "google" };
     const availableProviderName = providerAliases[providerName] || providerName;
+    const providerConfig = config.providers?.[availableProviderName] || config.providers?.[providerName] || {};
     const providerOk = providers.includes(availableProviderName) || cfg.adapter === "mock";
-    allOk = check(`  ${role}`, providerOk, `provider=${providerName || "unset"}${providerOk ? "" : " (provider not available)"}`) && allOk;
+    const detail = providerOk
+      ? `provider=${providerName}`
+      : `provider=${providerName || "unset"}; configure roles.${role}.provider, default_provider, or a provider API key`;
+    allOk = check(`  ${role}`, providerOk, detail) && allOk;
+    if (providerOk && providerName && !providerConfig.models?.length && cfg.model) {
+      check(`  ${role} model`, true, `${cfg.model} (provider default)`);
+    }
   }
 
   console.log(`\n${allOk ? "✅ All checks passed" : "⚠️  Some checks failed — see above"}`);
