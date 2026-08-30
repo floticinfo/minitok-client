@@ -25,6 +25,7 @@ function initGitRepo(dir) {
   execSync("git config user.email t@t.com", { cwd: dir, stdio: "pipe" });
   execSync("git config user.name T", { cwd: dir, stdio: "pipe" });
   fs.writeFileSync(p.join(dir, "initial.txt"), "initial");
+  fs.writeFileSync(p.join(dir, "VERIFY_CMD.sh"), "#!/usr/bin/env bash\nexit 0\n");
   execSync("git add -A && git commit -m init", { cwd: dir, stdio: "pipe" });
 }
 
@@ -115,7 +116,7 @@ describe("PHASE 9: REJECT Recovery E2E", () => {
     pm.createProvider = (n) => n === "rta" ? new RejectThenApprove() : origCreateProvider(n);
     try {
       const r = await runPipeline("Create recovery-proof.txt with minitok_RECOVERY_PASS", {
-repoRoot: repoDir, providerOverride: "rta", skipEntitlementCheck: true, skipCheck: true,
+repoRoot: repoDir, providerOverride: "rta", skipEntitlementCheck: true,
          overrides: { budget: { max_cycles: 3 } },
       });
       assert.ok(r.cycles.length >= 2, `Expected >= 2 cycles, got ${r.cycles.length}`);
@@ -152,7 +153,7 @@ repoRoot: repoDir, providerOverride: "rta", skipEntitlementCheck: true, skipChec
     pm.createProvider = (n) => n === "cr" ? new CR() : origCreateProvider(n);
     try {
       const r = await runPipeline("CHANGES_REQUESTED test", {
-repoRoot: repoDir, providerOverride: "cr", skipEntitlementCheck: true, skipCheck: true,
+repoRoot: repoDir, providerOverride: "cr", skipEntitlementCheck: true,
          overrides: { budget: { max_cycles: 3 } },
       });
       assert.equal(r.cycles.length, 3);
@@ -168,7 +169,7 @@ repoRoot: repoDir, providerOverride: "cr", skipEntitlementCheck: true, skipCheck
     pm.createProvider = (n) => n === "ar" ? new AlwaysReject() : origCreateProvider(n);
     try {
       const r = await runPipeline("Always reject", {
-repoRoot: repoDir, providerOverride: "ar", skipEntitlementCheck: true, skipCheck: true,
+repoRoot: repoDir, providerOverride: "ar", skipEntitlementCheck: true,
          overrides: { budget: { max_cycles: 3 } },
       });
       assert.equal(r.cycles.length, 3);

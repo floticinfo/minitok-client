@@ -278,7 +278,7 @@ async function runPipelineInWorkspace(task, opts = {}) {
 
     // Phase 4: Check
     console.log("  🧪 Running verification command...");
-    const checkResult = opts.dryRun ? { passed: true, evidence: { status: "skipped", command: "dry-run", output: "" } } : opts.skipCheck ? { passed: true, evidence: { status: "skipped", command: "skip-check", output: "" } } : verifyCommand(repoRoot, { script_path: config.validation?.script_path, timeout_ms: config.validation?.timeout_ms });
+    const checkResult = opts.dryRun ? { passed: true, evidence: { status: "skipped", command: "dry-run", output: "" } } : verifyCommand(repoRoot, { script_path: config.validation?.script_path, timeout_ms: config.validation?.timeout_ms });
 
     // Phase 5: Review
     console.log("  🔍 Reviewing...");
