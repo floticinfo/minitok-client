@@ -33,13 +33,7 @@ const DEFAULTS = {
     research_enabled: true,
     search: { web: { endpoint: "", api_key: "" }, github: { token: "", base: "" } },
   },
-  paths: { state_dir: ".minitok", evidence_dir: ".minitok/evidence" },
-  plugins: { enabled: false },
-  coding: { enabled: false, adapter: "commandcode" },
-  review_loop: { enabled: false, auto_next_task: false, auto_repair: false, max_failures: 0, escalate_confidence_below: 0.7, escalate_on_security_findings: true },
-  executor: { enabled: false, adapter: "commandcode" },
   validation: { enabled: true, script_path: "VERIFY_CMD.sh", timeout_ms: 120000, confidence_threshold: 0.8, max_changed_files: 20 },
-  commit: { enabled: false, auto_message: true, require_validation: true },
 };
 
 function deepMerge(base, override) {
