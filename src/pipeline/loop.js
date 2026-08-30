@@ -172,6 +172,8 @@ async function runPipelineInWorkspace(task, opts = {}) {
   const tokenSetting = config.budget.token_budget;
   const tokenBudget = tokenSetting === "unlimited" || tokenSetting === 0 || tokenSetting == null ? Infinity : Math.min(Number(tokenSetting) || 1, hardTokenLimit);
   const originalGoal = task;
+  const hardTimeoutMs = (Number(config.execution.timeout_hard_limit_sec) || 86400) * 1000;
+  const deadline = Date.now() + hardTimeoutMs;
   const budgetChars = config.execution?.context_budget_chars || DEFAULT_CONTEXT_BUDGET_CHARS;
   const results = { cycles: [], totalTokens: { input: 0, output: 0 }, goal: originalGoal, evolution: {} };
   let confirmationGranted = false; // Track whether user approved changes for this run
@@ -212,6 +214,10 @@ async function runPipelineInWorkspace(task, opts = {}) {
     // Graceful shutdown check
     if (_abortRequested) {
       console.log("🛑 Pipeline interrupted by signal.");
+      break;
+    }
+    if (Date.now() >= deadline) {
+      console.log("\n⏱️  Timeout hard limit reached. Stopping.");
       break;
     }
     // 💰 Token budget cap — prevent runaway LLM usage
