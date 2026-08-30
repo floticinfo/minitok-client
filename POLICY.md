@@ -3,7 +3,7 @@
 > **Document type:** Technical policy — data processing, consent, and entitlement architecture
 > **Version:** 1.0.0
 > **Last updated:** 2026-08-28
-> **Applies to:** `@flotic/minitok` v1.3.0+
+> **Applies to:** `@flotic/minitok` v1.3.1+
 
 ---
 
@@ -42,6 +42,7 @@ Having a valid subscription (entitlement) does **not** imply consent to data tra
 - **Privacy consent** controls whether data is actually transmitted
 
 Both must be satisfied for telemetry upload.
+
 ## 3. Data Classification Summary
 
 | Classification | Description | Server Transfer |
@@ -77,6 +78,9 @@ Users manage consent via CLI:
 ```bash
 minitok evolution status   # View current consent state
 minitok evolution enable   # Enable telemetry (opt-in)
+minitok evolution disable  # Disable telemetry (opt-out)
+```
+
 ---
 
 ## 5. Entitlement Model
@@ -107,7 +111,7 @@ Entitlement artifact (signed Ed25519)
   → Check privacy consent
   → Execute operation
 ```
-minitok evolution disable  # Disable telemetry (opt-out)
+
 ---
 
 ## 6. Upload Gate Chain

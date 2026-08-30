@@ -6,6 +6,7 @@ const git = require("../../git/operations");
 const { WorkspaceManager } = require("../../workspace/manager");
 
 const VERIFY_CMD = `#!/usr/bin/env bash
+# Windows users need Git Bash or WSL to run this gate.
 set -euo pipefail
 if command -v npm >/dev/null 2>&1; then
   npm test

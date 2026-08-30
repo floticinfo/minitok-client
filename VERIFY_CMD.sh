@@ -1,4 +1,5 @@
 # minitok verification gate
+# Windows users need Git Bash or WSL to run this gate.
 set -euo pipefail
 if command -v npm >/dev/null 2>&1; then
   npm test
