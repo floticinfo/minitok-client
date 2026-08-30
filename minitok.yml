@@ -1,5 +1,6 @@
 # minitok configuration
-# Pipeline state is stored under .minitok/contracts/.
+# Pipeline state is stored under .minitok/contracts.
+# Configure at least one provider; the first provider is the default unless overridden.
 
 project:
   name: "minitok-npm"

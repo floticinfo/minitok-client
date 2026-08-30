@@ -4,6 +4,8 @@
  * Autonomous loop — orchestrates plan → implement → verify → iterate.
  */
 
+const fs = require("fs");
+const path = require("path");
 const providerModule = require("../llm/provider");
 const { loadConfig, resolveProviderName } = require("../config/loader");
 const { intel } = require("./intel");
@@ -24,8 +26,6 @@ const { resolveServerUrl } = require("../cli/commands/server-config");
 const git = require("../git/operations");
 const readline = require("readline");
 
-const fs = require("fs");
-const path = require("path");
 const os = require("os");
 
 const INSTALLATION_TOKEN_FILE = path.join(os.homedir(), ".minitok", "entitlement", "installation-token.json");
@@ -216,7 +216,7 @@ async function runPipelineInWorkspace(task, opts = {}) {
     // Context compaction (token savings)
     const rawRepoContext = getRepoContext(repoRoot);
     const repoContext = compactContext(rawRepoContext, budgetChars);
-    writeContextManifest(repoRoot, { goal: task, source: "pipeline", budget_chars: budgetChars, original_chars: rawRepoContext.length, final_chars: repoContext.length, files: ["package.json", "README.md", "minitok.yml"] });
+    writeContextManifest(repoRoot, { goal: task, source: "pipeline", budget_chars: budgetChars, original_chars: rawRepoContext.length, final_chars: repoContext.length, files: ["package.json", "README.md", "minitok.yml"].filter(file => fs.existsSync(path.join(repoRoot, file))) });
 
     // Build per-role provider options (model + reasoning/thinking)
     const roleOpts = (role) => {
