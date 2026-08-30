@@ -24,11 +24,12 @@ Output format (strict JSON):
 }`;
 
 async function plan(provider, task, repoContext, options = {}) {
+  const intelligence = options.intelligence ? `\n\n## Repository Intelligence\n${JSON.stringify(options.intelligence, null, 2)}` : "";
   const messages = [
     { role: "system", content: PLAN_SYSTEM_PROMPT },
     {
       role: "user",
-      content: `## Task\n${task}\n\n## Repository Context\n${repoContext}\n\n## Constraints\n- Minimize file changes\n- Follow existing code patterns\n- Include error handling`,
+      content: `## Task\n${task}\n\n## Repository Context\n${repoContext}${intelligence}\n\n## Constraints\n- Minimize file changes\n- Follow existing code patterns\n- Include error handling`,
     },
   ];
 

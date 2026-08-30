@@ -5,6 +5,12 @@ const path = require("path");
 const git = require("../../git/operations");
 const { WorkspaceManager } = require("../../workspace/manager");
 
+const VERIFY_CMD = `#!/usr/bin/env bash
+set -euo pipefail
+npm test
+npm run lint
+`;
+
 const minitok_YML = `# minitok configuration
 # See docs/ARCHITECTURE.md for full schema reference.
 
@@ -12,18 +18,28 @@ project:
   name: "{{PROJECT_NAME}}"
   stack: generic
 
+# Configure at least one provider. It becomes the default for every role.
+# Set roles.<role>.provider to override one role.
+providers:
+  default:
+    base_url: ""
+    api_key: ""
+    models: []
+
+default_provider: default
+
 roles:
   plan:
-    adapter: claude
+    provider: ""
     effort: medium
   review:
-    adapter: claude
+    provider: ""
     effort: medium
   work:
-    adapter: claude
+    provider: ""
     effort: medium
   intel:
-    adapter: claude
+    provider: ""
     effort: medium
 
 budget:
@@ -34,6 +50,11 @@ execution:
   max_retries: 3
   timeout_sec: 600
   research_enabled: true
+
+validation:
+  enabled: true
+  script_path: VERIFY_CMD.sh
+  timeout_ms: 120000
 
 commit:
   enabled: false
@@ -57,9 +78,11 @@ async function cmdMigrate(repoPath, name) {
   const projectName = name || path.basename(resolved);
   const minitokDir = path.join(resolved, ".minitok");
   const configPath = path.join(resolved, "minitok.yml");
+  const verifyPath = path.join(resolved, "VERIFY_CMD.sh");
+  const contractsDir = path.join(minitokDir, "contracts");
 
-  // Create .minitok directory
-  fs.mkdirSync(minitokDir, { recursive: true });
+  // Create .minitok state and contracts directories
+  fs.mkdirSync(contractsDir, { recursive: true });
 
   // Create minitok.yml if not exists
   if (!fs.existsSync(configPath)) {
@@ -68,6 +91,14 @@ async function cmdMigrate(repoPath, name) {
     console.log(`Created minitok.yml`);
   } else {
     console.log(`minitok.yml already exists, skipping`);
+  }
+
+  if (!fs.existsSync(verifyPath)) {
+    fs.writeFileSync(verifyPath, VERIFY_CMD, "utf-8");
+    if (process.platform !== "win32") fs.chmodSync(verifyPath, 0o755);
+    console.log(`Created VERIFY_CMD.sh`);
+  } else {
+    console.log(`VERIFY_CMD.sh already exists, skipping`);
   }
 
   // Create .gitignore entries if needed

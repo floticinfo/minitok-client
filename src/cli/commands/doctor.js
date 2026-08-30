@@ -5,7 +5,7 @@ const fs = require("fs");
 const os = require("os");
 const { minitok_VERSION } = require("../../core/version");
 const { detectAvailableProviders } = require("../../llm/provider");
-const { loadConfig } = require("../../config/loader");
+const { loadConfig, resolveProviderName } = require("../../config/loader");
 
 function check(name, ok, detail = "") {
   const icon = ok ? "✅" : "❌";
@@ -56,8 +56,9 @@ async function cmdDoctor() {
 
   console.log(`\nRoles:`);
   for (const [role, cfg] of Object.entries(config.roles)) {
-    const adapterOk = providers.includes(cfg.adapter) || cfg.adapter === "mock";
-    allOk = check(`  ${role}`, adapterOk, `adapter=${cfg.adapter}${adapterOk ? "" : " (provider not available)"}`) && allOk;
+    const providerName = resolveProviderName(config, role);
+    const providerOk = providers.includes(providerName) || cfg.adapter === "mock";
+    allOk = check(`  ${role}`, providerOk, `provider=${providerName || "unset"}${providerOk ? "" : " (provider not available)"}`) && allOk;
   }
 
   console.log(`\n${allOk ? "✅ All checks passed" : "⚠️  Some checks failed — see above"}`);

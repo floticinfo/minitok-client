@@ -5,10 +5,14 @@
  */
 
 const providerModule = require("../llm/provider");
-const { loadConfig } = require("../config/loader");
+const { loadConfig, resolveProviderName } = require("../config/loader");
+const { intel } = require("./intel");
 const { plan } = require("./planner");
 const { implement, applyChanges } = require("./implementer");
 const { verify } = require("./verifier");
+const { verifyCommand } = require("./check");
+const { buildRepairTask } = require("./repair");
+const { writeContract, writeContextManifest } = require("../state/contracts");
 const { generateNextTask } = require("./next_task");
 const { compactText, DEFAULT_CONTEXT_BUDGET_CHARS } = require("../context/compaction");
 const { KnowledgeStore } = require("../evolution/knowledge");
@@ -136,19 +140,30 @@ async function runPipelineInWorkspace(task, opts = {}) {
     }
   }
 
-  // Resolve provider — alias to canonical name for config lookup
+  const providersConfig = config.providers || {};
+  const configuredProviderNames = Object.keys(providersConfig);
+  const defaultProvider = config.default_provider || configuredProviderNames[0] || "";
   const ALIAS_MAP = { claude: "anthropic", gpt: "openai", gemini: "google" };
-  const providerName = opts.providerOverride || config.roles.plan.adapter;
-  const canonicalName = ALIAS_MAP[providerName] || providerName;
-  const provider = providerModule.createProvider(providerName, config.providers?.[canonicalName] || {});
-  if (!provider.isAvailable()) {
-    throw new Error(`Provider '${providerName}' is not available. Set the appropriate API key (ANTHROPIC_API_KEY, OPENAI_API_KEY, or GOOGLE_API_KEY).`);
+  const createRoleProvider = (role) => {
+    const providerName = resolveProviderName(config, role, opts.providerOverride) || defaultProvider;
+    if (!providerName) throw new Error(`No provider configured for role '${role}'. Configure default_provider or providers.`);
+    const canonicalName = ALIAS_MAP[providerName] || providerName;
+    const provider = providerModule.createProvider(providerName, providersConfig[canonicalName] || providersConfig[providerName] || {});
+    return { name: providerName, provider };
+  };
+  const roleProviders = {};
+  for (const role of ["plan", "work", "review", "intel"]) {
+    roleProviders[role] = createRoleProvider(role);
+    if (!(await roleProviders[role].provider.isAvailable())) {
+      throw new Error(`Provider '${roleProviders[role].name}' for role '${role}' is not available. Configure its credentials or choose another provider.`);
+    }
   }
 
   const maxCycles = config.budget.max_cycles || 3;
   const tokenBudget = config.budget.token_budget || 500000; // 500K tokens default cap
   const originalGoal = task;
   const budgetChars = config.execution?.context_budget_chars || DEFAULT_CONTEXT_BUDGET_CHARS;
+  writeContract(repoRoot, { status: "running", goal: originalGoal, verify_command: config.validation?.script_path || "VERIFY_CMD.sh" });
   const results = { cycles: [], totalTokens: { input: 0, output: 0 }, goal: originalGoal, evolution: {} };
   let confirmationGranted = false; // Track whether user approved changes for this run
 
@@ -197,7 +212,9 @@ async function runPipelineInWorkspace(task, opts = {}) {
 
     console.log(`\n🔄 Cycle ${cycle}/${adaptedMaxCycles}`);
     // Context compaction (token savings)
-    const repoContext = compactContext(getRepoContext(repoRoot), budgetChars);
+    const rawRepoContext = getRepoContext(repoRoot);
+    const repoContext = compactContext(rawRepoContext, budgetChars);
+    writeContextManifest(repoRoot, { goal: task, source: "pipeline", budget_chars: budgetChars, original_chars: rawRepoContext.length, final_chars: repoContext.length, files: ["package.json", "README.md", "minitok.yml"] });
 
     // Build per-role provider options (model + reasoning/thinking)
     const roleOpts = (role) => {
@@ -211,9 +228,14 @@ async function runPipelineInWorkspace(task, opts = {}) {
       return opts;
     };
 
-    // Phase 1: Plan
+    console.log("  🧭 Gathering repository intelligence...");
+    const intelResult = await intel(roleProviders.intel.provider, task, repoContext, roleOpts("intel"));
+    results.totalTokens.input += intelResult.tokens?.input || 0;
+    results.totalTokens.output += intelResult.tokens?.output || 0;
+
+    // Phase 2: Plan
     console.log("  📋 Planning...");
-    const planResult = await plan(provider, task, repoContext, roleOpts("plan"));
+    const planResult = await plan(roleProviders.plan.provider, task, repoContext, { ...roleOpts("plan"), intelligence: intelResult.intelligence });
     results.totalTokens.input += planResult.tokens?.input || 0;
     results.totalTokens.output += planResult.tokens?.output || 0;
     console.log(`     Plan: ${planResult.plan.error ? "❌ " + planResult.plan.error : "✅ " + (planResult.plan.steps?.length || 0) + " steps"}`);
@@ -223,9 +245,9 @@ async function runPipelineInWorkspace(task, opts = {}) {
       continue;
     }
 
-    // Phase 2: Implement
+    // Phase 3: Implement
     console.log("  🔧 Implementing...");
-    const implResult = await implement(provider, planResult, repoContext, roleOpts("work"));
+    const implResult = await implement(roleProviders.work.provider, planResult, repoContext, roleOpts("work"));
     results.totalTokens.input += implResult.tokens?.input || 0;
     results.totalTokens.output += implResult.tokens?.output || 0;
 
@@ -252,23 +274,32 @@ async function runPipelineInWorkspace(task, opts = {}) {
     }
     console.log(`     Applied: ${applyResult.applied} changes${applyResult.errors.length ? `, ${applyResult.errors.length} errors` : ""}`);
 
-    // Phase 3: Verify
-    console.log("  🔍 Verifying...");
-    const verifyResult = await verify(provider, task, implResult.changes, repoRoot, roleOpts("review"));
+    // Phase 4: Check
+    console.log("  🧪 Running verification command...");
+    const checkResult = opts.dryRun ? { passed: true, evidence: { status: "skipped", command: "dry-run", output: "" } } : verifyCommand(repoRoot, { script_path: config.validation?.script_path, timeout_ms: config.validation?.timeout_ms });
+
+    // Phase 5: Review
+    console.log("  🔍 Reviewing...");
+    const verifyResult = await verify(roleProviders.review.provider, task, { changes: implResult.changes, check: checkResult }, repoRoot, roleOpts("review"));
     results.totalTokens.input += verifyResult.tokens?.input || 0;
     results.totalTokens.output += verifyResult.tokens?.output || 0;
-    const verdict = verifyResult.review.verdict || "UNKNOWN";
-    const icon = verdict === "APPROVE" ? "✅" : verdict === "REJECT" ? "❌" : "⚠️";
+    const reviewVerdict = verifyResult.review.verdict || "UNKNOWN";
+    const checkPassed = checkResult.passed;
+    const verdict = checkPassed && reviewVerdict === "APPROVE" ? "APPROVE" : "REJECT";
+    const icon = verdict === "APPROVE" ? "✅" : "❌";
     console.log(`     Review: ${icon} ${verdict} (confidence: ${verifyResult.review.confidence || "N/A"})`);
 
     results.cycles.push({
       cycle,
+      intelligence: intelResult.intelligence,
       plan: planResult.plan,
       implement: { summary: implResult.changes.summary, files_changed: implResult.changes.files_changed },
+      check: checkResult.evidence,
+      review: verifyResult.review,
       verify: verifyResult.review,
       tokens: {
-        input: (planResult.tokens?.input || 0) + (implResult.tokens?.input || 0) + (verifyResult.tokens?.input || 0),
-        output: (planResult.tokens?.output || 0) + (implResult.tokens?.output || 0) + (verifyResult.tokens?.output || 0),
+        input: (intelResult.tokens?.input || 0) + (planResult.tokens?.input || 0) + (implResult.tokens?.input || 0) + (verifyResult.tokens?.input || 0),
+        output: (intelResult.tokens?.output || 0) + (planResult.tokens?.output || 0) + (implResult.tokens?.output || 0) + (verifyResult.tokens?.output || 0),
       },
       status: verdict,
     });
@@ -277,7 +308,7 @@ async function runPipelineInWorkspace(task, opts = {}) {
     if (verdict === "APPROVE" && (verifyResult.review.confidence || 0) >= 0.8) {
       if (cycle < adaptedMaxCycles && !opts.dryRun) {
         console.log("  🧠 Evaluating goal progress...");
-        const nextResult = await generateNextTask(provider, originalGoal, results.cycles, verifyResult.review, roleOpts("plan"));
+        const nextResult = await generateNextTask(roleProviders.plan.provider, originalGoal, results.cycles, verifyResult.review, roleOpts("plan"));
         results.totalTokens.input += nextResult.tokens?.input || 0;
         results.totalTokens.output += nextResult.tokens?.output || 0;
         if (nextResult.done) {
@@ -293,10 +324,10 @@ async function runPipelineInWorkspace(task, opts = {}) {
       }
     }
 
-    // If rejected, iterate with feedback
+    // Phase 6: Repair
     if (verdict === "REJECT") {
-      console.log("  ↻ Changes rejected, will retry...");
-      task = `${originalGoal}\n\nPrevious attempt was REJECTED. Review feedback:\n${verifyResult.review.summary || ""}\nFindings:\n${(verifyResult.review.findings || []).map((f) => `- [${f.severity}] ${f.message}`).join("\n")}`;
+      console.log("  🔧 Preparing repair task...");
+      task = buildRepairTask(originalGoal, verifyResult.review, checkResult);
     }
   }
   } finally {
@@ -352,6 +383,7 @@ async function runPipelineInWorkspace(task, opts = {}) {
   console.log(`🧬 Evolution: ${knowledgeStore.size} outcomes recorded`);
 
   results.success = success;
+  writeContract(repoRoot, { status: success ? "completed" : "failed", goal: originalGoal, verify_command: config.validation?.script_path || "VERIFY_CMD.sh", cycles: results.cycles.length, success });
   return results;
 }
 

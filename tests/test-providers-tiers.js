@@ -125,6 +125,33 @@ describe("createProvider tier routing", () => {
   });
 });
 
+describe("Provider selection by role", () => {
+  it("prefers role provider over default provider", () => {
+    const { resolveProviderName } = require("../src/config/loader");
+    const config = { default_provider: "default", providers: { default: {}, review: {} }, roles: { plan: {}, review: { provider: "review" } } };
+    assert.equal(resolveProviderName(config, "plan"), "default");
+    assert.equal(resolveProviderName(config, "review"), "review");
+  });
+
+  it("uses legacy adapter before default for compatibility", () => {
+    const { resolveProviderName } = require("../src/config/loader");
+    const config = { default_provider: "default", providers: { default: {}, plan: {} }, roles: { plan: { adapter: "plan" } } };
+    assert.equal(resolveProviderName(config, "plan"), "plan");
+  });
+
+  it("uses the first configured provider when no default is named", () => {
+    const { resolveProviderName } = require("../src/config/loader");
+    const config = { providers: { first: {}, second: {} }, roles: { plan: {} } };
+    assert.equal(resolveProviderName(config, "plan"), "first");
+  });
+
+  it("uses a CLI override for every role", () => {
+    const { resolveProviderName } = require("../src/config/loader");
+    const config = { default_provider: "default", roles: { plan: { provider: "plan" } } };
+    assert.equal(resolveProviderName(config, "plan", "override"), "override");
+  });
+});
+
 describe("detectAvailableProviders with custom", () => {
   it("detects openrouter", async () => {
     const { detectAvailableProviders } = require("../src/llm/provider");

@@ -16,12 +16,13 @@ const _ROLE_KEYS = new Set(["plan", "review", "work", "intel"]);
 
 const DEFAULTS = {
   offline: false,
+  default_provider: "",
   project: { name: "unknown", stack: "generic" },
   roles: {
-    plan: { adapter: "claude", model: "", effort: "medium", reasoning: null, thinking_budget: 0, tools: ["Read", "Write", "Edit"], fallback_model: "", fallback: [], variant: null, mode: "tui", timeout_sec: 300 },
-    review: { adapter: "claude", model: "", effort: "medium", reasoning: null, thinking_budget: 0, tools: ["Read", "Write", "Edit"], fallback_model: "", fallback: [], variant: null, mode: "tui", timeout_sec: 300 },
-    work: { adapter: "claude", model: "", effort: "medium", reasoning: null, thinking_budget: 0, tools: ["Read", "Write", "Edit"], fallback_model: "", fallback: [], variant: null, mode: "tui", timeout_sec: 300 },
-    intel: { adapter: "claude", model: "", effort: "medium", reasoning: null, thinking_budget: 0, tools: ["Read", "Write", "Edit"], fallback_model: "", fallback: [], variant: null, mode: "tui", timeout_sec: 300 },
+    plan: { provider: "", adapter: "", model: "", effort: "medium", reasoning: null, thinking_budget: 0, tools: ["Read", "Write", "Edit"], fallback_model: "", fallback: [], variant: null, mode: "tui", timeout_sec: 300 },
+    review: { provider: "", adapter: "", model: "", effort: "medium", reasoning: null, thinking_budget: 0, tools: ["Read", "Write", "Edit"], fallback_model: "", fallback: [], variant: null, mode: "tui", timeout_sec: 300 },
+    work: { provider: "", adapter: "", model: "", effort: "medium", reasoning: null, thinking_budget: 0, tools: ["Read", "Write", "Edit"], fallback_model: "", fallback: [], variant: null, mode: "tui", timeout_sec: 300 },
+    intel: { provider: "", adapter: "", model: "", effort: "medium", reasoning: null, thinking_budget: 0, tools: ["Read", "Write", "Edit"], fallback_model: "", fallback: [], variant: null, mode: "tui", timeout_sec: 300 },
   },
   budget: { max_cycles: 0, token_budget: 500000 },
   execution: {
@@ -37,7 +38,7 @@ const DEFAULTS = {
   coding: { enabled: false, adapter: "commandcode" },
   review_loop: { enabled: false, auto_next_task: false, auto_repair: false, max_failures: 0, escalate_confidence_below: 0.7, escalate_on_security_findings: true },
   executor: { enabled: false, adapter: "commandcode" },
-  validation: { enabled: false, confidence_threshold: 0.8, max_changed_files: 20 },
+  validation: { enabled: true, script_path: "VERIFY_CMD.sh", timeout_ms: 120000, confidence_threshold: 0.8, max_changed_files: 20 },
   commit: { enabled: false, auto_message: true, require_validation: true },
 };
 
@@ -109,6 +110,12 @@ function loadYaml(filePath) {
   }
 }
 
+function resolveProviderName(config, role, override) {
+  const providers = config?.providers || {};
+  const roleConfig = config?.roles?.[role] || {};
+  return override || roleConfig.provider || roleConfig.adapter || config?.default_provider || Object.keys(providers)[0] || "";
+}
+
 function loadConfig(configPath, overrides) {
   let raw = {};
 
@@ -145,4 +152,4 @@ function loadConfig(configPath, overrides) {
   return config;
 }
 
-module.exports = { loadConfig, deepMerge, coerceValue, DEFAULTS };
+module.exports = { loadConfig, deepMerge, coerceValue, resolveProviderName, DEFAULTS };

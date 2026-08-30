@@ -16,5 +16,7 @@ scripts/gen-*.cjs
 scripts/gen-*.js
 .npmrc
 
-.minitok/
+.minitok/*
+!.minitok/contracts/
+!.minitok/contracts/**
 minitok-evidence/
