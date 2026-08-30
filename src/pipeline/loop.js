@@ -127,7 +127,10 @@ async function runPipelineInWorkspace(task, opts = {}) {
 
   // Entitlement gate — must pass before any LLM/provider work
   let gateResult = null;
-  if (!opts.skipEntitlementCheck) {
+  const devMode = process.env.MINITOK_DEV_MODE === "1" && process.env.NODE_ENV !== "production";
+  if (devMode) {
+    console.warn("⚠️  MINITOK_DEV_MODE=1 — entitlement gate bypassed for local development only.");
+  } else if (!opts.skipEntitlementCheck) {
     const { checkEntitlementOnline } = require("../entitlement/online");
     const { GateState } = require("../entitlement/gate");
     gateResult = await checkEntitlementOnline({ entitlementDir: opts.entitlementDir, serverUrl: opts.serverUrl || resolveServerUrl() });
