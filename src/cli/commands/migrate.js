@@ -61,7 +61,7 @@ execution:
 
 validation:
   enabled: true
-  script_path: VERIFY_CMD.sh
+  script_path: VERIFY_CMD.mjs
   timeout_ms: 120000
 
 commit:

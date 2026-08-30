@@ -33,7 +33,7 @@ const DEFAULTS = {
     research_enabled: true,
     search: { web: { endpoint: "", api_key: "" }, github: { token: "", base: "" } },
   },
-  validation: { enabled: true, script_path: "VERIFY_CMD.sh", timeout_ms: 120000, confidence_threshold: 0.8, max_changed_files: 20 },
+  validation: { enabled: true, script_path: "VERIFY_CMD.mjs", timeout_ms: 120000, confidence_threshold: 0.8, max_changed_files: 20 },
 };
 
 function deepMerge(base, override) {
