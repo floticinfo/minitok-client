@@ -10,7 +10,7 @@ const path = require("path");
 const os = require("os");
 const { WorkspaceError } = require("../core/errors");
 
-const MINITOK_HOME = path.join(os.homedir(), ".minitok");
+const minitok_HOME = path.join(os.homedir(), ".minitok");
 const WORKSPACES_FILE = "workspaces.json";
 
 const INDICATORS = {
@@ -39,7 +39,7 @@ function isUnder(child, parent) {
 
 class WorkspaceManager {
   constructor(minitokHome) {
-    this._home = minitokHome || MINITOK_HOME;
+    this._home = minitokHome || minitok_HOME;
     this._file = path.join(this._home, WORKSPACES_FILE);
     this._registry = this._load();
   }
@@ -161,4 +161,4 @@ class WorkspaceManager {
   }
 }
 
-module.exports = { WorkspaceManager, MINITOK_HOME, detectProjectType };
+module.exports = { WorkspaceManager, minitok_HOME, detectProjectType };

@@ -11,7 +11,7 @@ const os = require("os");
 const yaml = require("js-yaml");
 const { ConfigError } = require("../core/errors");
 
-const ENV_PREFIX = "MINITOK_";
+const ENV_PREFIX = "minitok_";
 const _ROLE_KEYS = new Set(["plan", "review", "work", "intel"]);
 
 const DEFAULTS = {

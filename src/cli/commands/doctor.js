@@ -3,7 +3,7 @@
 const { execSync } = require("child_process");
 const fs = require("fs");
 const os = require("os");
-const { MINITOK_VERSION } = require("../../core/version");
+const { minitok_VERSION } = require("../../core/version");
 const { detectAvailableProviders } = require("../../llm/provider");
 const { loadConfig } = require("../../config/loader");
 
@@ -14,7 +14,7 @@ function check(name, ok, detail = "") {
 }
 
 async function cmdDoctor() {
-  console.log(`minitok ${MINITOK_VERSION} — Environment Check\n`);
+  console.log(`minitok ${minitok_VERSION} — Environment Check\n`);
 
   let allOk = true;
 

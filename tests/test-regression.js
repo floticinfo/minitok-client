@@ -6,7 +6,7 @@ const assert = require("node:assert/strict");
 /**
  * Regression tests for P0 async/await bugs and --offline removal.
  * These verify that the specific crash bugs identified in the
- * MINITOK_FINAL_RELEASE_GATE audit cannot recur.
+ * minitok_FINAL_RELEASE_GATE audit cannot recur.
  */
 
 describe("Regression: doctor async provider detection", () => {

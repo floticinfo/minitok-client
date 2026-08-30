@@ -4,8 +4,7 @@
  * minitok activation-key — Retrieve your activation key.
  *
  * Calls POST /v1/activation-key with the customer JWT and returns the
- * plaintext activation key (exactly once). Provider-agnostic: works for both
- * Dodo (dodo_payment_id) and Stripe (stripe_invoice_id) payments.
+ * plaintext activation key (exactly once) for a Dodo subscription payment.
  */
 
 const https = require("https");
@@ -16,7 +15,7 @@ const { resolveServerUrl } = require("./server-config");
  * Retrieve the activation key for the authenticated customer.
  * @param {object} opts
  * @param {string} [opts.token] - Customer JWT (required)
- * @param {string} [opts.payment] - Optional dodo_payment_id or stripe_invoice_id
+ * @param {string} [opts.payment] - Optional Dodo payment ID
  * @param {string} [opts.server] - minitok server URL
  * @returns {Promise<number>} Exit code
  */
@@ -25,7 +24,7 @@ async function cmdActivationKey(opts) {
   const token = opts?.token;
   if (!token) {
     console.error("Error: Authentication token required.");
-    console.error("Usage: minitok activation-key --token <JWT> [--payment <dodo_payment_id|stripe_invoice_id>]");
+    console.error("Usage: minitok activation-key --token <JWT> [--payment <dodo_payment_id>]");
     return 1;
   }
 

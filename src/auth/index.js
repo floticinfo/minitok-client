@@ -2,7 +2,7 @@
 
 /**
  * Unified Auth Module — resolves credentials for any provider.
- * 
+ *
  * Supported auth types:
  *   - api_key:   Simple API key from config or environment
  *   - oauth:     Browser-based OAuth 2.0 (GitHub, Anthropic, Azure AD)
@@ -36,7 +36,7 @@ class AuthManager {
   /**
    * Resolve credentials for a provider.
    * Returns { headers: {}, token: string | null }
-   * 
+   *
    * @param {string} providerName - Provider name (anthropic, openai, google, etc.)
    * @param {object} providerConfig - Full provider config from minitok.yml
    */

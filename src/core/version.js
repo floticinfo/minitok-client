@@ -1,12 +1,12 @@
 "use strict";
 
 /** Core version constants. */
-const MINITOK_VERSION = "1.3.0";
+const minitok_VERSION = "1.3.0";
 const STATE_SCHEMA_VERSION = 1;
 const ADAPTER_PROTOCOL_VERSION = 1;
 
 module.exports = {
-  MINITOK_VERSION,
+  minitok_VERSION,
   STATE_SCHEMA_VERSION,
   ADAPTER_PROTOCOL_VERSION,
 };

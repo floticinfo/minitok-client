@@ -6,6 +6,15 @@ const p = require("path");
 const os = require("os");
 function tmpDir() { return fs.mkdtempSync(p.join(os.tmpdir(), "mt-")); }
 function clean(d) { try { fs.rmSync(d, { recursive: true, force: true }); } catch {} }
+function withoutProviderEnvironment(fn) {
+  const names = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GOOGLE_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY"];
+  const saved = Object.fromEntries(names.map(name => [name, process.env[name]]));
+  names.forEach(name => delete process.env[name]);
+  return Promise.resolve().then(fn).finally(() => names.forEach(name => {
+    if (saved[name] === undefined) delete process.env[name];
+    else process.env[name] = saved[name];
+  }));
+}
 
 describe("F1: Workspace", () => {
   let home, wm;
@@ -34,12 +43,12 @@ describe("F2: LLM Providers", () => {
   it("google", () => { const p2 = require("../src/llm/provider").createProvider("google"); assert.equal(p2.name, "google"); });
   it("gemini alias", () => assert.equal(require("../src/llm/provider").createProvider("gemini").name, "google"));
   it("unknown throws", () => assert.throws(() => require("../src/llm/provider").createProvider("nope"), /Unknown/));
-  it("detect none", async () => assert.equal((await require("../src/llm/provider").detectAvailableProviders({})).length, 0));
+  it("detect none", async () => withoutProviderEnvironment(async () => assert.equal((await require("../src/llm/provider").detectAvailableProviders({})).length, 0)));
   it("detect anthropic", async () => assert.ok((await require("../src/llm/provider").detectAvailableProviders({ providers: { anthropic: { api_key: "k" } } })).includes("anthropic")));
   it("detect openai", async () => assert.ok((await require("../src/llm/provider").detectAvailableProviders({ providers: { openai: { api_key: "k" } } })).includes("openai")));
   it("detect google", async () => assert.ok((await require("../src/llm/provider").detectAvailableProviders({ providers: { google: { api_key: "k" } } })).includes("google")));
   it("detect env", async () => { process.env.ANTHROPIC_API_KEY = "e"; process.env.OPENAI_API_KEY = "e2"; const pp = await require("../src/llm/provider").detectAvailableProviders({}); assert.ok(pp.includes("anthropic")); assert.ok(pp.includes("openai")); delete process.env.ANTHROPIC_API_KEY; delete process.env.OPENAI_API_KEY; });
-  it("detect all 3", async () => { const p = await require("../src/llm/provider").detectAvailableProviders({ providers: { anthropic: { api_key: "k" }, openai: { api_key: "k" }, google: { api_key: "k" } } }); assert.equal(p.length, 3); });
+  it("detect all 3", async () => withoutProviderEnvironment(async () => { const p = await require("../src/llm/provider").detectAvailableProviders({ providers: { anthropic: { api_key: "k" }, openai: { api_key: "k" }, google: { api_key: "k" } } }); assert.equal(p.length, 3); }));
   it("complete throws", async () => await assert.rejects(() => require("../src/llm/provider").createProvider("anthropic").complete([]), /no credentials|API error/));
   it("config key", async () => assert.equal(await new (require("../src/llm/provider").AnthropicProvider)({ api_key: "k" }).isAvailable(), true));
   it("custom url", () => assert.equal(new (require("../src/llm/provider").AnthropicProvider)({ api_key: "k", endpoint: "https://x.com" }).baseUrl, "https://x.com"));

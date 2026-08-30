@@ -15,11 +15,11 @@ class ObservationService {
   constructor(options = {}) {
     this._storageDir = options.storageDir || path.join(os.homedir(), ".minitok", "observations");
   }
-  
+
   ingest(options = {}) {
     const { project, events } = options;
     if (!Array.isArray(events)) return { accepted: 0, errors: ["events must be an array"] };
-    
+
     const valid = [];
     const errors = [];
     for (const event of events) {
@@ -32,14 +32,14 @@ class ObservationService {
         ingested_at: new Date().toISOString(),
       });
     }
-    
+
     if (valid.length > 0) {
       this._persistEvents(project || "default", valid);
     }
-    
+
     return { accepted: valid.length, errors };
   }
-  
+
   query(project, options = {}) {
     const dir = this._storageDir;
     const projectDir = path.join(dir, this._hashProject(project || "default"));
@@ -58,7 +58,7 @@ class ObservationService {
       return { events: [], total: 0 };
     }
   }
-  
+
   _persistEvents(project, events) {
     const projectDir = path.join(this._storageDir, this._hashProject(project));
     fs.mkdirSync(projectDir, { recursive: true });
@@ -67,7 +67,7 @@ class ObservationService {
     const lines = events.map(e => JSON.stringify(e)).join("\n") + "\n";
     fs.appendFileSync(file, lines, "utf-8");
   }
-  
+
   _hashProject(project) {
     const crypto = require("crypto");
     return crypto.createHash("sha256").update(project).digest("hex").slice(0, 12);

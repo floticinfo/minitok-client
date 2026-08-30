@@ -3,7 +3,7 @@
 const { WorkspaceManager } = require("../../workspace/manager");
 const { loadConfig } = require("../../config/loader");
 const { detectAvailableProviders } = require("../../llm/provider");
-const { MINITOK_VERSION } = require("../../core/version");
+const { minitok_VERSION } = require("../../core/version");
 const git = require("../../git/operations");
 const fs = require("fs");
 const path = require("path");
@@ -12,7 +12,7 @@ const { resolveServerUrl } = require("./server-config");
 const { EvolutionOptIn } = require("../../evolution/optin");
 
 async function cmdStatus() {
-  console.log(`minitok ${MINITOK_VERSION}\n`);
+  console.log(`minitok ${minitok_VERSION}\n`);
 
   // --- Entitlement section ---
   try {

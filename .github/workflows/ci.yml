@@ -1,4 +1,4 @@
-# MINITOK Client CI Pipeline
+# minitok Client CI Pipeline
 # Runs tests and security scan on push to master
 
 name: CI

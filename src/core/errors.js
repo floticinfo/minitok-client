@@ -1,48 +1,48 @@
 "use strict";
 
-class MinitokError extends Error {
+class minitokError extends Error {
   constructor(message) {
     super(message);
-    this.name = "MinitokError";
+    this.name = "minitokError";
   }
 }
 
-class WorkspaceError extends MinitokError {
+class WorkspaceError extends minitokError {
   constructor(message) {
     super(message);
     this.name = "WorkspaceError";
   }
 }
 
-class AuthError extends MinitokError {
+class AuthError extends minitokError {
   constructor(message) {
     super(message);
     this.name = "AuthError";
   }
 }
 
-class ConfigError extends MinitokError {
+class ConfigError extends minitokError {
   constructor(message) {
     super(message);
     this.name = "ConfigError";
   }
 }
 
-class PipelineError extends MinitokError {
+class PipelineError extends minitokError {
   constructor(message) {
     super(message);
     this.name = "PipelineError";
   }
 }
 
-class AdapterError extends MinitokError {
+class AdapterError extends minitokError {
   constructor(message) {
     super(message);
     this.name = "AdapterError";
   }
 }
 
-class MigrationError extends MinitokError {
+class MigrationError extends minitokError {
   constructor(message) {
     super(message);
     this.name = "MigrationError";
@@ -50,7 +50,7 @@ class MigrationError extends MinitokError {
 }
 
 module.exports = {
-  MinitokError,
+  minitokError,
   WorkspaceError,
   AuthError,
   ConfigError,

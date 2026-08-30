@@ -102,9 +102,9 @@ describe("M3 Runtime Services", () => {
     assert.equal(r.text, "hello");
   });
 
-  it("entitlement status returns valid structure", () => {
+  it("entitlement status returns valid structure", async () => {
     const svc = createRuntimeServices();
-    const r = svc.entitlement.status();
+    const r = await svc.entitlement.status();
     assert.equal(typeof r.allowed, "boolean");
     assert.equal(typeof r.state, "string");
     assert.equal(typeof r.message, "string");

@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
+import os from "node:os";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const { checkEntitlement, GateState } = require("../src/entitlement/gate.js");
@@ -19,7 +20,7 @@ const H = "127.0.0.1";
 function httpGet(u) { return new Promise((ok, no) => { const o = new URL(u); http.get({ hostname: o.hostname, port: o.port, path: o.pathname }, r => { let d = ""; r.on("data", c => d += c); r.on("end", () => ok({ s: r.statusCode, b: d })); }).on("error", no); }); }
 function httpPost(u, body) { return new Promise((ok, no) => { const o = new URL(u), d = JSON.stringify(body); const q = http.request({ hostname: o.hostname, port: o.port, path: o.pathname, method: "POST", headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(d) } }, r => { let x = ""; r.on("data", c => x += c); r.on("end", () => { try { ok({ s: r.statusCode, b: JSON.parse(x) }); } catch { ok({ s: r.statusCode, b: x }); } }); }); q.on("error", no); q.write(d); q.end(); }); }
 describe("M4.1 Security Boundaries", () => {
-  it("no Stripe live keys in source", () => { const d = path.resolve(import.meta.dirname, "../src"), f = []; function w(x) { for (const e of fs.readdirSync(x, { withFileTypes: true })) { const p = path.join(x, e.name); if (e.isDirectory()) w(p); else if (e.name.endsWith(".js") && !p.includes("test") && !p.includes("fixture")) f.push(p); } } w(d); for (const p of f) { const c = fs.readFileSync(p, "utf-8"); assert.ok(!c.includes("sk_live_"), p); assert.ok(!c.includes("whsec_"), p); } });
+  it("no live payment keys in source", () => { const d = path.resolve(import.meta.dirname, "../src"), f = []; function w(x) { for (const e of fs.readdirSync(x, { withFileTypes: true })) { const p = path.join(x, e.name); if (e.isDirectory()) w(p); else if (e.name.endsWith(".js") && !p.includes("test") && !p.includes("fixture")) f.push(p); } } w(d); for (const p of f) { const c = fs.readFileSync(p, "utf-8"); assert.ok(!c.includes("sk_live_"), p); assert.ok(!c.includes("whsec_"), p); } });
   it("Runtime binds localhost only", () => { const c = fs.readFileSync(new URL("../src/runtime/server.js", import.meta.url), "utf-8"); assert.ok(c.includes("127.0.0.1")); assert.ok(!c.includes("0.0.0.0")); });
   it("MCP no child_process", () => { const c = fs.readFileSync(new URL("../src/mcp/tools.js", import.meta.url), "utf-8"); assert.ok(!c.includes("child_process")); });
   it("Runtime no fs.watch", () => { for (const f of fs.readdirSync(new URL("../src/runtime/", import.meta.url)).filter(x => x.endsWith(".js"))) { const c = fs.readFileSync(new URL("../src/runtime/" + f, import.meta.url), "utf-8"); assert.ok(!c.includes("fs.watch"), f); } });
@@ -34,7 +35,16 @@ describe("M4.2 CLI Command Exports", () => {
   it("server-config", () => assert.ok(resolveServerUrl().startsWith("http")));
 });
 describe("M4.3 Entitlement Gate", () => {
-  it("returns MISSING", () => { assert.equal(checkEntitlement().state, GateState.MISSING); assert.equal(checkEntitlement().allowed, false); });
+  it("returns MISSING", () => {
+    const entitlementDir = fs.mkdtempSync(path.join(os.tmpdir(), "minitok-empty-entitlement-"));
+    try {
+      const result = checkEntitlement({ entitlementDir });
+      assert.equal(result.state, GateState.MISSING);
+      assert.equal(result.allowed, false);
+    } finally {
+      fs.rmSync(entitlementDir, { recursive: true, force: true });
+    }
+  });
   it("deterministic", () => { assert.equal(checkEntitlement().state, checkEntitlement().state); });
   it("no secrets leaked", () => { const s = JSON.stringify(checkEntitlement()); assert.ok(!s.includes("sk_live")); assert.ok(!s.includes("sk_test")); });
 });
@@ -42,7 +52,7 @@ describe("M4.4 MCP Protocol", () => {
   it("8 tools defined", () => assert.equal(getToolDefinitions().length, 8));
   it("minitok_ prefix", () => { for (const t of getToolDefinitions()) assert.ok(t.name.startsWith("minitok_")); });
   it("valid schema", () => { for (const t of getToolDefinitions()) { assert.ok(t.inputSchema); assert.equal(t.inputSchema.type, "object"); } });
-  it("status returns entitlement", async () => { const r = await getToolHandler("minitok_status", {}, { knowledge: { query: () => ({ outcomes: [], total: 0 }) }, entitlement: { status: () => ({ state: "MISSING", allowed: false }) } }); assert.ok(JSON.parse(r.content[0].text).entitlement); });
+  it("status returns entitlement", async () => { const r = await getToolHandler("minitok_status", {}, { knowledge: { query: () => ({ outcomes: [], total: 0 }) }, entitlement: { status: async () => ({ state: "MISSING", allowed: false }) } }); assert.ok(JSON.parse(r.content[0].text).entitlement); });
   it("knowledge query", async () => { const r = await getToolHandler("minitok_knowledge_query", { limit: 5 }, { knowledge: { query: () => ({ outcomes: [], total: 0 }) } }); assert.ok(JSON.parse(r.content[0].text).outcomes !== undefined); });
   it("compact", async () => { const r = await getToolHandler("minitok_compact_context", { text: "hello" }, { compact: { compact: t => ({ text: t }) } }); assert.equal(JSON.parse(r.content[0].text).text, "hello"); });
   it("unknown throws", async () => { await assert.rejects(() => getToolHandler("bad", {}, {})); });
@@ -69,23 +79,23 @@ describe("M4.7 CLI Graceful Failure", () => {
 describe("M4.9 Dodo Production Checkout/Portal Paths", () => {
   it("checkout defaults to /v1/checkout/dodo", () => {
     const c = fs.readFileSync(new URL("../src/cli/commands/checkout.js", import.meta.url), "utf-8");
-    assert.ok(c.includes("opts?.stripe ? \"/v1/checkout\" : \"/v1/checkout/dodo\""), "checkout must default to Dodo endpoint");
+    assert.ok(c.includes('const endpoint = "/v1/checkout/dodo"'), "checkout must default to Dodo endpoint");
   });
-  it("checkout preserves Stripe via --stripe", () => {
+  it("checkout is Dodo-only", () => {
     const c = fs.readFileSync(new URL("../src/cli/commands/checkout.js", import.meta.url), "utf-8");
-    assert.ok(c.includes("/v1/checkout"), "Stripe legacy path must remain");
+    assert.ok(c.includes('const endpoint = "/v1/checkout/dodo"'));
+    assert.ok(!c.includes("/v1/checkout\""));
+    assert.ok(!c.includes("--legacy-provider"));
   });
-  it("portal defaults to /v1/portal/dodo", () => {
+  it("portal is Dodo-only", () => {
     const c = fs.readFileSync(new URL("../src/cli/commands/portal.js", import.meta.url), "utf-8");
-    assert.ok(c.includes("opts?.stripe ? \"/v1/portal\" : \"/v1/portal/dodo\""), "portal must default to Dodo endpoint");
+    assert.ok(c.includes('const endpoint = "/v1/portal/dodo"'));
+    assert.ok(!c.includes("/v1/portal\""));
+    assert.ok(!c.includes("--legacy-provider"));
   });
-  it("portal preserves Stripe via --stripe", () => {
-    const c = fs.readFileSync(new URL("../src/cli/commands/portal.js", import.meta.url), "utf-8");
-    assert.ok(c.includes("/v1/portal"), "Stripe legacy path must remain");
-  });
-  it("bin registers --stripe option for checkout", () => {
+  it("bin exposes no legacy provider flag", () => {
     const c = fs.readFileSync(new URL("../bin/minitok.js", import.meta.url), "utf-8");
-    assert.ok(c.includes("--stripe"), "bin must expose --stripe flag");
+    assert.ok(!c.includes("--legacy-provider"));
   });
   it("bin registers activation-key command", () => {
     const c = fs.readFileSync(new URL("../bin/minitok.js", import.meta.url), "utf-8");

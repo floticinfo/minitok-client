@@ -10,7 +10,7 @@ const { auditLog } = require("../core/audit");
 
 /**
  * Files/directories protected from autonomous pipeline modification.
- * These control MINITOK's own runtime behavior and provider selection.
+ * These control minitok's own runtime behavior and provider selection.
  */
 const PROTECTED_PATHS = ["minitok.yml", ".minitok"];
 

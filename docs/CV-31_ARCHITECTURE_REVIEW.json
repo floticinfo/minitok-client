@@ -1,0 +1,245 @@
+{
+  "task": "CV-31 — Paid Entitlement → Real Runtime E2E",
+  "phase": "Architecture review only (read-only, design approval gate)",
+  "rule": "DO NOT modify code, DO NOT create migrations, DO NOT add tests, DO NOT refactor. No install, no signup, no payment, no API calls until plan is approved.",
+
+  "evidence": {
+    "published_artifact": {
+      "name": "@flotic/minitok",
+      "version": "1.3.0",
+      "tarball_local": "C:\\Users\\J1\\minitok-npm\\flotic-minitok-1.3.0.tgz",
+      "tarball_npm": "https://registry.npmjs.org/@flotic/minitok/-/minitok-1.3.0.tgz",
+      "source_dir": "C:\\Users\\J1\\minitok-npm",
+      "files_inspected": [
+        "package.json",
+        "README.md",
+        "CHANGELOG.md",
+        "bin/minitok.js",
+        "src/cli/commands/{checkout,activation-key,activate,runtime,auth,status,migrate,doctor,run,portal,server-config}.js",
+        "src/entitlement/{gate,online,store,verify,model,public-key}.js",
+        "src/runtime/{server,routes,index,entitlement}.js",
+        "src/pipeline/loop.js"
+      ],
+      "inspected_with": "read_file / grep / shell_command (no write)"
+    }
+  },
+
+  "actual_cli_lifecycle_in_v1_3_0": {
+    "summary": "npm client is a CUSTOMER-FACING CLI. It does NOT contain signup, login, checkout-payment-capture, or in-CLI webhooks. Payment and account creation happen on the web (minitok.dev). The CLI starts AFTER the customer has a JWT from checkout.",
+    "commands": {
+      "doctor": "Environment check (Node, git, providers, ~/.minitok). Does NOT contact server.",
+      "migrate": "Local: writes minitok.yml + .minitok/ + registers workspace. No network. No entitlement check.",
+      "status": "Local: reads ~/.minitok/entitlement/* and prints state. No network unless online path used. Reports Entitlement: ALLOWED|MISSING|EXPIRED|...",
+      "checkout": "POST /v1/checkout/dodo with a pre-existing customer JWT → returns a checkout_url to open in a browser. CLI never captures payment.",
+      "activation-key": "POST /v1/activation-key with the JWT (and optional dodo_payment_id) → returns activation_key exactly once. Requires JWT from prior signup/purchase.",
+      "activate": "POST /v1/activate { key, installation_id, hostname } → stores signed entitlement + installation_token locally. This is what makes the local gate pass.",
+      "auth login <provider>": "Stores LLM provider API key or runs OAuth. NOT customer auth — it is provider credential storage.",
+      "auth status": "Lists stored LLM provider tokens.",
+      "portal": "POST /v1/portal/dodo with JWT → returns billing portal URL.",
+      "run <task>": "Loads config, REQUIRES entitlement gate to pass (calls checkEntitlementOnline, refuses if not allowed), then runs plan→implement→verify with an LLM provider. Needs ANTHROPIC_API_KEY / OPENAI_API_KEY / GOOGLE_API_KEY / OPENROUTER_API_KEY.",
+      "runtime start|stop|status": "Local HTTP server on 127.0.0.1:4578. Endpoints: /health, GET /api/v1/status, POST /api/v1/{knowledge/query,knowledge/record,knowledge/analyze,context/compact,evidence/collect,observations/ingest,observations/query,audit/recent}."
+    },
+    "what_is_NOT_in_the_cli": [
+      "signup / register account",
+      "login (no customer-login CLI command — the JWT is issued at checkout time)",
+      "password / email-otp flow",
+      "payment-method capture (browser-only via checkout_url)",
+      "webhook receiver (lives on the server, not the client)"
+    ]
+  },
+
+  "payment_to_runtime_wiring": {
+    "1_checkout": "minitok checkout --token <JWT> [--plan pro] → POST https://api.minitok.dev/v1/checkout/dodo → { checkout_url }. User opens URL in browser. Dodo webhook → server records subscription.",
+    "2_activation_key": "minitok activation-key --token <JWT> [--payment <dodo_payment_id>] → POST /v1/activation-key → { activation_key } (one-time). Server validates webhook-driven subscription state.",
+    "3_activate": "minitok activate <activation_key> → POST /v1/activate { key, installation_id, hostname } → { entitlement (signed), installation_token }. Client writes ~/.minitok/entitlement/entitlement.json + installation-token.json. Server stores installation_id ↔ subscription.",
+    "4_entitlement_gate": "Local: verify.js validates Ed25519 signature over canonical payload, checks installation_id binding (v1.3.0), expiry, clock rollback. Online: checkEntitlementOnline also POSTs /v1/validate to server with installation_token (server may downgrade state to SERVER_REJECTED).",
+    "5_runtime_start": "minitok runtime start → starts 127.0.0.1:4578 with NO entitlement gate. RuntimeService.status() only reads gate state. Every other endpoint accepts requests regardless of state.",
+    "6_run": "minitok run <task> → runPipeline throws if !allowed. This is the ONLY command that hard-blocks on entitlement state.",
+    "7_actual_supported_provider_task": "Step 13 of CV-31 requires a real LLM provider call. The package's supported providers are anthropic, openai, google, openrouter, plus tier-3 custom. ALL require an API key."
+  },
+
+  "forbidden_terms_anti_legacy_check": {
+    "rule": "DO NOT use any legacy/stripped identifier. The npm package has been proprietary since 1.2.0; all pre-1.2.0 MIT versions are deprecated. Stripe is retained only via opt-in (portal --stripe, /v1/portal).",
+    "terms_to_avoid_in_production_path": [
+      "MIT (use proprietary only)",
+      "Stripe (use Dodo unless --stripe opt-in)",
+      "pip install minitok (npm path is the commercial client)",
+      "DALIMNIM0/minitok-client (deprecated GitHub org)",
+      "minitok (unscoped) (use @flotic/minitok)",
+      "pre-1.1.0 install snippets",
+      "KEYS = key-2024-01-prod via the OLD public-key file path if it conflicts with v1.1.4 fixed key",
+      "per_call_usd (removed in 1.0.1, replaced by token_budget)",
+      "--offline flag (removed in 1.0.1)",
+      "offline grace of 30 days (v1.3.0 CHANGELOG says enforced but gate.js source shows OFFLINE_GRACE_DAYS=0 — see GAP #1)"
+    ],
+    "grep_method": "function-declaration-start patterns (^func_name), not substrings. Avoid false positives from comments."
+  },
+
+  "critical_findings": [
+    {
+      "id": "GAP-1",
+      "title": "Runtime server has NO per-request entitlement gate",
+      "evidence": "src/runtime/routes.js — every endpoint (knowledge/query, knowledge/record, knowledge/analyze, context/compact, evidence/collect, observations/ingest, observations/query, audit/recent) accepts requests without checking entitlement. EntitlementService.status() is only called for /api/v1/status (informational).",
+      "implication": "CV-31 step 'runtime without entitlement' will show that the runtime process STARTS, and all MCP endpoints RESPOND, when no entitlement is present. This is by design per README ('localhost-only, no authentication required') but the user's verification expects a denial.",
+      "what_user_actually_gets": "Runtime start = process up, port 4578 listening. /health = 200. /api/v1/status = 200 with entitlement.state='MISSING'. Other endpoints = 200 with empty/default data. The hard block is only at minitok run, not at the runtime."
+    },
+    {
+      "id": "GAP-2",
+      "title": "CHANGELOG claim vs source code for offline grace",
+      "evidence": "CHANGELOG.md 1.1.0: 'Offline grace mode (30 days) for expired entitlements'. src/entitlement/gate.js line 18-19: 'const OFFLINE_GRACE_DAYS = 0; const OFFLINE_GRACE_MS = 0;'",
+      "implication": "The OFFLINE_GRACE state exists but is unreachable in the shipped code path because the constant is zero. Re-verify in run."
+    },
+    {
+      "id": "GAP-3",
+      "title": "No CLI signup/login/payment-capture",
+      "evidence": "bin/minitok.js — no 'signup' or 'login' command. checkout.js only opens a Dodo checkout URL in the browser and never captures payment data.",
+      "implication": "CV-31 steps 4-7 (signup, login, checkout, payment) cannot be performed end-to-end via the CLI alone. They require the minitok.dev web flow + Dodo sandbox/live. We can: (a) sign up on the web with a disposable email, (b) obtain the JWT, (c) drive the remaining CLI steps. The CV-31 procedure is misaligned with the product — the CLI begins AT checkout, not BEFORE."
+    },
+    {
+      "id": "GAP-4",
+      "title": "Step 13 (real supported provider task) needs a real LLM API key",
+      "evidence": "src/pipeline/loop.js line 144-146: 'Provider is not available. Set the appropriate API key (ANTHROPIC_API_KEY, OPENAI_API_KEY, or GOOGLE_API_KEY).'",
+      "implication": "Cannot run a real task without a real API key. Per CV-31: '실제 supported provider가 없다면 mock으로 PASS 처리하지 마십시오. provider credential이 필요하면 BLOCKED로 기록하십시오.' → this is a hard BLOCKED gate. Operator must supply a key."
+    },
+    {
+      "id": "GAP-5",
+      "title": "Step 8-9 require a real paid activation key",
+      "evidence": "minitok activation-key requires a JWT that the server only issues after a successful Dodo checkout webhook. minitok activate calls POST /v1/activate which the server only honors for keys tied to a real subscription.",
+      "implication": "Cannot complete steps 6-9 without (a) disposable account on minitok.dev, (b) Dodo sandbox or test-mode payment, (c) real activation_key returned from /v1/activation-key. Per taste rule: BLOCKED — operator credential required."
+    },
+    {
+      "id": "GAP-6",
+      "title": "Runtime start is a foreground blocking process",
+      "evidence": "src/cli/commands/runtime.js: cmdRuntimeStart returns 'new Promise(() => {})' — it never resolves. minitok runtime start blocks the terminal until killed.",
+      "implication": "For CV-31 step 11 we must background it (Windows: START /B or PowerShell Start-Process). For step 14 (stop) we need to send SIGTERM; on Windows the npm package uses process.kill which on Windows only supports SIGTERM as termination signal (no actual SIGTERM semantics)."
+    }
+  ],
+
+  "pass_gap_risk": {
+    "PASS": [
+      "v1.3.0 is published and matches the README",
+      "CLI surface (doctor, migrate, status, checkout, activation-key, activate, runtime, run) is consistent across bin/minitok.js, src/cli/commands/*, and README",
+      "Entitlement gate is enforced in runPipeline (the only command that actually performs work)",
+      "Ed25519 signature verification is present (src/entitlement/verify.js) with installation_id binding in v1.3.0",
+      "Runtime binds 127.0.0.1 only (HOST constant in runtime/server.js)"
+    ],
+    "GAP": [
+      "GAP-1: runtime has no per-request gate (design vs verification expectation mismatch)",
+      "GAP-2: OFFLINE_GRACE_DAYS=0 contradicts CHANGELOG",
+      "GAP-3: CLI has no signup/login; web step is required",
+      "GAP-4: real LLM key required for step 13 → BLOCKED",
+      "GAP-5: real paid activation_key required for steps 6-9 → BLOCKED",
+      "GAP-6: Windows process kill semantics differ from POSIX (use taskkill)"
+    ],
+    "RISK": [
+      "Disposable account + Dodo sandbox: webhook delivery latency could leave the JWT/subscription out of sync with the /v1/activation-key response. Idempotency must be verified by replay.",
+      "CV-31 step 8 'activation key' is a string the server returns once. If the run fails mid-way, re-running activation-key will return 'already retrieved' (or null). Capture on first success.",
+      "v1.3.0 binds entitlements to installation_id. A 'clean Windows user/home' run means a fresh installation_id — re-activation is required, not portable from a prior machine."
+    ]
+  },
+
+  "operator_questions_required_before_execution": [
+    "Q1: Do you authorize spending on a real Dodo test-mode purchase (~ $1 Pro plan) to obtain a real activation_key? [Y/N] — gates steps 5-9",
+    "Q2: Do you have a real LLM API key (Anthropic / OpenAI / Google / OpenRouter) for step 13? [Y/N — if N, step 13 is BLOCKED]",
+    "Q3: Do you want the runtime to be a hard requirement for step 13, or is the verification that 'runtime started with valid entitlement' enough on its own? — affects whether to skip the expensive provider call",
+    "Q4: Confirm target directory: C:\\Users\\J1\\cv31-paid-runtime (clean dir, fresh `git init`)?"
+  ],
+
+  "execution_plan_when_approved": {
+    "phase_a_clean_install": {
+      "steps": ["mkdir C:\\Users\\J1\\cv31-paid-runtime", "cd there", "git init", "git config user.email cv31@local", "git config user.name cv31"],
+      "expected_artifacts": "empty repo, no minitok state",
+      "evidence": "git status, git log, dir listing"
+    },
+    "phase_b_install": {
+      "npm_install": "npm init -y",
+      "install_published": "npm install @flotic/minitok@1.3.0",
+      "version_check": "npx minitok --version (expect 1.3.0)",
+      "doctor": "npx minitok doctor",
+      "evidence": "package.json, package-lock.json, node_modules/, --version stdout, doctor stdout"
+    },
+    "phase_c_migrate": {
+      "migrate": "npx minitok migrate .",
+      "post": "minitok.yml exists, .minitok/ exists, workspace registered",
+      "evidence": "ls -la, cat minitok.yml, .minitok/state.json (if any)"
+    },
+    "phase_d_account_and_jwt": {
+      "WEB_required": "Open minitok.dev signup, create disposable account (use a temp email). Capture the JWT issued at checkout completion.",
+      "evidence": "screenshot (NOT included by default) + JWT redacted in log"
+    },
+    "phase_e_checkout": {
+      "cmd": "npx minitok checkout --token <JWT> --plan pro",
+      "post": "checkout_url returned",
+      "browser": "Open URL, complete Dodo test-mode payment",
+      "evidence": "checkout stdout, dodo_payment_id captured (from receipt or Dodo dashboard), web server log shows webhook delivered"
+    },
+    "phase_f_activation_key": {
+      "cmd": "npx minitok activation-key --token <JWT> --payment <dodo_payment_id>",
+      "post": "activation_key captured (one-time)",
+      "idempotency_check": "REPLAY same call → expect 'already retrieved' / 4xx, not a second key",
+      "evidence": "stdout, server log"
+    },
+    "phase_g_activate": {
+      "cmd": "npx minitok activate <activation_key>",
+      "post": "~/.minitok/entitlement/entitlement.json + installation-token.json + gate-state.json",
+      "evidence": "ls ~/.minitok/entitlement/, cat (redacted) installation-token.json, status output"
+    },
+    "phase_h_entitlement_verification": {
+      "cmd": "npx minitok status",
+      "expected": "Entitlement: ALLOWED, Plan: pro, Expires: <future ISO>",
+      "evidence": "stdout"
+    },
+    "phase_i_runtime_lifecycle": {
+      "start": "Start-Process -NoNewWindow npx minitok runtime start, capture PID from ~/.minitok/runtime.pid",
+      "status_runtime": "npx minitok runtime status",
+      "status_http": "curl http://127.0.0.1:4578/health",
+      "status_api": "curl http://127.0.0.1:4578/api/v1/status — record entitlement.state",
+      "stop": "taskkill /F /PID <pid> (Windows-safe; SIGTERM not meaningful on Win32)",
+      "restart": "Start-Process again, repeat status checks",
+      "evidence": "PID file, curl outputs, runtime.pid timestamps"
+    },
+    "phase_j_negative_controls": {
+      "test_a_no_entitlement": "rm ~/.minitok/entitlement/entitlement.json → npx minitok status (expect Entitlement: MISSING); npx minitok runtime start still works; GET /api/v1/status returns state=MISSING; npx minitok run 'x' (BLOCKED by gate, expect non-zero exit + '🚫 Entitlement check failed')",
+      "test_b_expired": "Mutate entitlement.payload.expires_at to a past ISO + drop signature check by stubbing verify in a test env, OR set clock back beyond the 30s rollback threshold → state should be EXPIRED or CLOCK_ROLLBACK; runtime still starts; npx minitok run blocked",
+      "test_c_valid": "Re-run as in phase_h; runtime starts; status returns state=ALLOWED; npx minitok run proceeds to provider call (or BLOCKED if no key)",
+      "evidence": "stdout for each, file diffs"
+    },
+    "phase_k_real_provider_task_BLOCKED_gate": {
+      "if_yes_key": "export ANTHROPIC_API_KEY=...; npx minitok run 'Add a comment to README.md' --auto-accept; capture exit code, last-run.json",
+      "if_no_key": "Verdict: BLOCKED — operator credential required (provider API key not supplied)",
+      "evidence": "exit code, last-run.json, run log"
+    }
+  },
+
+  "evidence_per_taste": {
+    "files_modified": "NONE in this phase (read-only architecture review). Future phase_k may add notes to CV-31_PAID_RUNTIME_E2E_REPORT.md.",
+    "commands_executed": ["read-only file reads via read_file/grep", "dir / type / findstr for layout mapping"],
+    "test_results": "Not run in this phase. Runtime/install tests are phase B onward.",
+    "remaining_issues": ["Operator must answer Q1-Q4 to unblock execution"],
+    "evidence": "this JSON file + the file list in evidence.published_artifact.files_inspected",
+    "ready_for_claude_verification": "YES (architecture review is self-consistent and grounded in published source)"
+  },
+
+  "anti_legacy_compliance_for_implementation_phase": [
+    "Only use @flotic/minitok@1.3.0 (no unscoped 'minitok')",
+    "Use Dodo checkout, not Stripe (Stripe is only via --stripe opt-in)",
+    "Use minitok.yml v1 schema, not pre-1.0.0 'per_call_usd' or --offline flags",
+    "Use ANTHROPIC_API_KEY / OPENAI_API_KEY / GOOGLE_AI_KEY / OPENROUTER_API_KEY env vars (Google uses header, not URL param — v1.0.1)",
+    "installation_id is generated server-side; do not pre-create it",
+    "Expected deferred items for THIS phase: do NOT add test scripts, do NOT add a 'cv31' branch in minitok.yml, do NOT add new files outside the docs/ folder"
+  ],
+
+  "state_transition_table": {
+    "before": "No local state, no entitlement, no workspace, no installed package",
+    "after_phase_b": "@flotic/minitok@1.3.0 installed, doctor runs",
+    "after_phase_c": "minitok.yml + .minitok/ + workspace registered",
+    "after_phase_g": "Entitlement ALLOWED, installation_token saved",
+    "after_phase_i_first_start": "Runtime listening 127.0.0.1:4578, PID file written",
+    "after_phase_i_stop": "Runtime not listening, PID file removed",
+    "after_phase_j_no_entitlement": "Runtime listening, status reports MISSING, run blocked",
+    "after_phase_j_expired": "Runtime listening, status reports EXPIRED, run blocked",
+    "after_phase_j_valid": "Runtime listening, status reports ALLOWED, run proceeds (or BLOCKED on key)"
+  },
+
+  "recommendation": "Approve the architecture review and execution plan as-is, with the following conditions:\n  1. Operator answers Q1-Q4 (esp. confirmation of Dodo test-mode payment and LLM API key availability)\n  2. Idempotency verification (replay activation-key) is a mandatory step, not optional\n  3. Step 13 (real provider task) MUST be marked BLOCKED if no real key is supplied — never mock-PASS\n  4. Report is written to docs/CV-31_PAID_RUNTIME_E2E_REPORT.md only AFTER the operator signs off, in chunked stages per taste rule (index first, then one Part per response)\n\nCompare pros/cons of two execution postures:\n  A) Execute the entire 15-step plan end-to-end on operator go-ahead\n  B) Execute only up to phase_h (entitlement granted) first, then return for go-ahead on runtime + provider call\nRecommend B (gate after phase_h) so the operator can inspect a real ALLOWED entitlement + activation_key artifact before spending on an LLM call, and so a webhook/activation failure doesn't burn the LLM budget."
+}

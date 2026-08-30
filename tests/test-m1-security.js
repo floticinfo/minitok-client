@@ -59,7 +59,7 @@ describe("SEC-01: Protected Files", () => {
 describe("F-01: Case-insensitive protected path bypass", () => {
   const { applyChanges } = require("../src/pipeline/implementer");
   const variations = [
-    "MINITOK.yml",
+    "minitok.yml",
     "MinItOk.yml",
     "minitok.YML",
     "minitok.yML",
@@ -74,7 +74,7 @@ describe("F-01: Case-insensitive protected path bypass", () => {
       clean(d);
     });
   }
-  const dotVariations = [".MINITOK", ".MinItOk", ".MinItOk/config.json"];
+  const dotVariations = [".minitok", ".MinItOk", ".MinItOk/config.json"];
   for (const v of dotVariations) {
     it(`blocks ${v} (case variation)`, () => {
       const d = tmpDir();
@@ -85,10 +85,10 @@ describe("F-01: Case-insensitive protected path bypass", () => {
       clean(d);
     });
   }
-  it("blocks traversal+case: subdir/../MINITOK.yml", () => {
+  it("blocks traversal+case: subdir/../minitok.yml", () => {
     const d = tmpDir();
     fs.mkdirSync(p.join(d, ".git"), { recursive: true });
-    const r = applyChanges(d, { changes: [{ file: "subdir/../MINITOK.yml", action: "create", content: "bad" }] });
+    const r = applyChanges(d, { changes: [{ file: "subdir/../minitok.yml", action: "create", content: "bad" }] });
     assert.equal(r.applied, 0);
     assert.ok(r.errors.some(e => e.includes("Protected")));
     clean(d);

@@ -15,26 +15,26 @@ const { EntitlementStore } = require("../src/entitlement/store");
 const { resolveServerUrl, saveServerUrl, DEFAULT_SERVER_URL } = require("../src/cli/commands/server-config");
 
 describe("M2.D8 — Server URL Configuration", () => {
-  const origEnv = process.env.MINITOK_SERVER_URL;
+  const origEnv = process.env.minitok_SERVER_URL;
 
   it("returns default when nothing configured", () => {
-    delete process.env.MINITOK_SERVER_URL;
+    delete process.env.minitok_SERVER_URL;
     const url = resolveServerUrl();
     assert.equal(url, DEFAULT_SERVER_URL);
   });
 
-  it("respects MINITOK_SERVER_URL env", () => {
-    process.env.MINITOK_SERVER_URL = "http://localhost:4000";
+  it("respects minitok_SERVER_URL env", () => {
+    process.env.minitok_SERVER_URL = "http://localhost:4000";
     const url = resolveServerUrl();
     assert.equal(url, "http://localhost:4000");
-    delete process.env.MINITOK_SERVER_URL;
+    delete process.env.minitok_SERVER_URL;
   });
 
   it("respects --server CLI flag", () => {
-    process.env.MINITOK_SERVER_URL = "http://env.example.com";
+    process.env.minitok_SERVER_URL = "http://env.example.com";
     const url = resolveServerUrl({ cliServer: "http://cli.example.com:9999" });
     assert.equal(url, "http://cli.example.com:9999");
-    delete process.env.MINITOK_SERVER_URL;
+    delete process.env.minitok_SERVER_URL;
   });
 
   it("normalizes trailing slash", () => {

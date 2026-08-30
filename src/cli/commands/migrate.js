@@ -5,7 +5,7 @@ const path = require("path");
 const git = require("../../git/operations");
 const { WorkspaceManager } = require("../../workspace/manager");
 
-const MINITOK_YML = `# minitok configuration
+const minitok_YML = `# minitok configuration
 # See docs/ARCHITECTURE.md for full schema reference.
 
 project:
@@ -63,7 +63,7 @@ async function cmdMigrate(repoPath, name) {
 
   // Create minitok.yml if not exists
   if (!fs.existsSync(configPath)) {
-    const content = MINITOK_YML.replace("{{PROJECT_NAME}}", projectName);
+    const content = minitok_YML.replace("{{PROJECT_NAME}}", projectName);
     fs.writeFileSync(configPath, content, "utf-8");
     console.log(`Created minitok.yml`);
   } else {

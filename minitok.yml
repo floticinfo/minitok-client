@@ -3,20 +3,33 @@
 
 project:
   name: "minitok-npm"
-  stack: generic
+  stack: node
+
+providers:
+  camel-stream:
+    base_url: https://stream.camelai.com
+    auth:
+      type: api_key
+      key: "${CAMEL_STREAM_API_KEY}"
+    models:
+      - id: auto
 
 roles:
   plan:
-    adapter: claude
+    adapter: camel-stream
+    model: auto
     effort: medium
   review:
-    adapter: claude
+    adapter: camel-stream
+    model: auto
     effort: medium
   work:
-    adapter: claude
+    adapter: camel-stream
+    model: auto
     effort: medium
   intel:
-    adapter: claude
+    adapter: camel-stream
+    model: auto
     effort: medium
 
 budget:

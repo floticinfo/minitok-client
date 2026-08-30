@@ -3,7 +3,7 @@
 const TOOLS = [
   {
     name: "minitok_knowledge_query",
-    description: "Query past MINITOK evolution outcomes",
+    description: "Query past minitok evolution outcomes",
     inputSchema: {
       type: "object",
       properties: {
@@ -66,7 +66,7 @@ const TOOLS = [
   },
   {
     name: "minitok_status",
-    description: "Show MINITOK entitlement and knowledge status",
+    description: "Show minitok entitlement and knowledge status",
     inputSchema: { type: "object", properties: {} },
   },
   {
@@ -114,7 +114,7 @@ async function getToolHandler(name, args, services) {
       return { content: [{ type: "text", text: JSON.stringify(r) }] };
     }
     case "minitok_status": {
-      const entitlement = services.entitlement.status();
+      const entitlement = await services.entitlement.status();
       const knowledge = services.knowledge.query({ limit: 0 });
       return { content: [{ type: "text", text: JSON.stringify({ entitlement, knowledge: { total: knowledge.total } }) }] };
     }

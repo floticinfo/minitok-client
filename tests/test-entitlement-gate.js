@@ -17,7 +17,9 @@ function makePayload(overrides = {}) {
     entitlement_id: "12345678-1234-4123-a123-123456789abc",
     plan_id: "pro", features: ["autonomous-coding"], max_devices: 3,
     issued_at: now.toISOString(), expires_at: expires.toISOString(),
-    key_id: "test-key-1", ...overrides,
+    key_id: "test-key-1",
+    installation_id: "12345678-1234-4123-a123-123456789abd",
+    ...overrides,
   };
 }
 
@@ -43,12 +45,12 @@ describe("Gate: MISSING", () => {
   const { checkEntitlement, GateState } = require("../src/entitlement/gate");
 
   it("blocks when no entitlement exists", () => {
-    const r = checkEntitlement({ _loadArtifact: () => null, _loadGateState: () => ({ latest_observed_at: 0, last_validated_at: null }), _saveGateState: () => {} });
+    const r = checkEntitlement({ _loadArtifact: () => null, _loadGateState: () => ({ latest_observed_at: 0, last_validated_at: null }), _saveGateState: () => {}, installationId: "12345678-1234-4123-a123-123456789abd" });
     assert.equal(r.allowed, false);
     assert.equal(r.state, GateState.MISSING);
   });
   it("blocks when artifact is undefined", () => {
-    const r = checkEntitlement({ _loadArtifact: () => undefined, _loadGateState: () => ({ latest_observed_at: 0, last_validated_at: null }), _saveGateState: () => {} });
+    const r = checkEntitlement({ _loadArtifact: () => undefined, _loadGateState: () => ({ latest_observed_at: 0, last_validated_at: null }), _saveGateState: () => {}, installationId: "12345678-1234-4123-a123-123456789abd" });
     assert.equal(r.allowed, false);
     assert.equal(r.state, GateState.MISSING);
   });
@@ -67,6 +69,7 @@ describe("Gate: VALID", () => {
       _loadArtifact: () => artifact,
       _loadGateState: () => ({ latest_observed_at: 0, last_validated_at: null }),
       _saveGateState: (s) => { savedState = s; },
+      installationId: "12345678-1234-4123-a123-123456789abd",
       now: new Date(),
     });
     assert.equal(r.allowed, true);
@@ -85,20 +88,20 @@ describe("Gate: INVALID_SIGNATURE", () => {
   it("blocks tampered payload", () => {
     const artifact = signPayload(makePayload(), kp.privateKey, "test-key-1");
     artifact.payload.plan_id = "enterprise";
-    const r = checkEntitlement({ _loadArtifact: () => artifact, _loadGateState: () => ({ latest_observed_at: 0, last_validated_at: null }), _saveGateState: () => {} });
+    const r = checkEntitlement({ _loadArtifact: () => artifact, _loadGateState: () => ({ latest_observed_at: 0, last_validated_at: null }), _saveGateState: () => {}, installationId: "12345678-1234-4123-a123-123456789abd" });
     assert.equal(r.allowed, false);
     assert.equal(r.state, GateState.INVALID_SIGNATURE);
   });
   it("blocks tampered signature", () => {
     const artifact = signPayload(makePayload(), kp.privateKey, "test-key-1");
     artifact.signature = "AAAA" + artifact.signature.slice(4);
-    const r = checkEntitlement({ _loadArtifact: () => artifact, _loadGateState: () => ({ latest_observed_at: 0, last_validated_at: null }), _saveGateState: () => {} });
+    const r = checkEntitlement({ _loadArtifact: () => artifact, _loadGateState: () => ({ latest_observed_at: 0, last_validated_at: null }), _saveGateState: () => {}, installationId: "12345678-1234-4123-a123-123456789abd" });
     assert.equal(r.allowed, false);
     assert.equal(r.state, GateState.INVALID_SIGNATURE);
   });
   it("blocks unknown key_id", () => {
     const artifact = signPayload(makePayload(), kp.privateKey, "unknown-key");
-    const r = checkEntitlement({ _loadArtifact: () => artifact, _loadGateState: () => ({ latest_observed_at: 0, last_validated_at: null }), _saveGateState: () => {} });
+    const r = checkEntitlement({ _loadArtifact: () => artifact, _loadGateState: () => ({ latest_observed_at: 0, last_validated_at: null }), _saveGateState: () => {}, installationId: "12345678-1234-4123-a123-123456789abd" });
     assert.equal(r.allowed, false);
     assert.equal(r.state, GateState.INVALID_SIGNATURE);
   });
@@ -111,12 +114,12 @@ describe("Gate: MALFORMED", () => {
   const { checkEntitlement, GateState } = require("../src/entitlement/gate");
 
   it("blocks invalid JSON structure", () => {
-    const r = checkEntitlement({ _loadArtifact: () => ({ payload: "bad", signature: "x", key_id: "k" }), _loadGateState: () => ({ latest_observed_at: 0, last_validated_at: null }), _saveGateState: () => {} });
+    const r = checkEntitlement({ _loadArtifact: () => ({ payload: "bad", signature: "x", key_id: "k" }), _loadGateState: () => ({ latest_observed_at: 0, last_validated_at: null }), _saveGateState: () => {}, installationId: "12345678-1234-4123-a123-123456789abd" });
     assert.equal(r.allowed, false);
     assert.equal(r.state, GateState.MALFORMED);
   });
   it("blocks missing required field", () => {
-    const r = checkEntitlement({ _loadArtifact: () => ({ payload: { entitlement_id: "bad" }, signature: "x", key_id: "k" }), _loadGateState: () => ({ latest_observed_at: 0, last_validated_at: null }), _saveGateState: () => {} });
+    const r = checkEntitlement({ _loadArtifact: () => ({ payload: { entitlement_id: "bad" }, signature: "x", key_id: "k" }), _loadGateState: () => ({ latest_observed_at: 0, last_validated_at: null }), _saveGateState: () => {}, installationId: "12345678-1234-4123-a123-123456789abd" });
     assert.equal(r.allowed, false);
     assert.equal(r.state, GateState.MALFORMED);
   });
@@ -132,7 +135,7 @@ describe("Gate: EXPIRED", () => {
     const past = new Date(Date.now() - 1000).toISOString();
     const earlier = new Date(Date.now() - 200000).toISOString();
     const artifact = signPayload(makePayload({ issued_at: earlier, expires_at: past }), kp.privateKey, "test-key-1");
-    const r = checkEntitlement({ _loadArtifact: () => artifact, _loadGateState: () => ({ latest_observed_at: 0, last_validated_at: null }), _saveGateState: () => {} });
+    const r = checkEntitlement({ _loadArtifact: () => artifact, _loadGateState: () => ({ latest_observed_at: 0, last_validated_at: null }), _saveGateState: () => {}, installationId: "12345678-1234-4123-a123-123456789abd" });
     assert.equal(r.allowed, false);
     assert.equal(r.state, GateState.EXPIRED);
   });
@@ -141,7 +144,7 @@ describe("Gate: EXPIRED", () => {
     const earlier = new Date(Date.now() - 200000).toISOString();
     const oldValidated = new Date(Date.now() - 40 * 24 * 3600 * 1000).toISOString();
     const artifact = signPayload(makePayload({ issued_at: earlier, expires_at: past }), kp.privateKey, "test-key-1");
-    const r = checkEntitlement({ _loadArtifact: () => artifact, _loadGateState: () => ({ latest_observed_at: 0, last_validated_at: oldValidated }), _saveGateState: () => {} });
+    const r = checkEntitlement({ _loadArtifact: () => artifact, _loadGateState: () => ({ latest_observed_at: 0, last_validated_at: oldValidated }), _saveGateState: () => {}, installationId: "12345678-1234-4123-a123-123456789abd" });
     assert.equal(r.allowed, false);
     assert.equal(r.state, GateState.EXPIRED);
   });
@@ -153,22 +156,21 @@ describe("Gate: EXPIRED", () => {
 describe("Gate: OFFLINE_GRACE", () => {
   const { checkEntitlement, GateState } = require("../src/entitlement/gate");
 
-  it("allows expired within grace", () => {
+  it("blocks expired even when mutable gate state claims recent validation", () => {
     const past = new Date(Date.now() - 1000).toISOString();
     const earlier = new Date(Date.now() - 200000).toISOString();
     const recent = new Date(Date.now() - 86400000).toISOString();
     const artifact = signPayload(makePayload({ issued_at: earlier, expires_at: past }), kp.privateKey, "test-key-1");
-    const r = checkEntitlement({ _loadArtifact: () => artifact, _loadGateState: () => ({ latest_observed_at: Date.now(), last_validated_at: recent }), _saveGateState: () => {} });
-    assert.equal(r.allowed, true);
-    assert.equal(r.state, GateState.OFFLINE_GRACE);
-    assert.ok(r.graceDaysRemaining > 0 && r.graceDaysRemaining <= 30);
+    const r = checkEntitlement({ _loadArtifact: () => artifact, _loadGateState: () => ({ latest_observed_at: Date.now(), last_validated_at: recent }), _saveGateState: () => {}, installationId: "12345678-1234-4123-a123-123456789abd" });
+    assert.equal(r.allowed, false);
+    assert.equal(r.state, GateState.EXPIRED);
   });
   it("blocks expired beyond grace", () => {
     const past = new Date(Date.now() - 1000).toISOString();
     const earlier = new Date(Date.now() - 200000).toISOString();
     const old = new Date(Date.now() - 31 * 86400000).toISOString();
     const artifact = signPayload(makePayload({ issued_at: earlier, expires_at: past }), kp.privateKey, "test-key-1");
-    const r = checkEntitlement({ _loadArtifact: () => artifact, _loadGateState: () => ({ latest_observed_at: Date.now(), last_validated_at: old }), _saveGateState: () => {} });
+    const r = checkEntitlement({ _loadArtifact: () => artifact, _loadGateState: () => ({ latest_observed_at: Date.now(), last_validated_at: old }), _saveGateState: () => {}, installationId: "12345678-1234-4123-a123-123456789abd" });
     assert.equal(r.allowed, false);
     assert.equal(r.state, GateState.EXPIRED);
   });
@@ -176,7 +178,7 @@ describe("Gate: OFFLINE_GRACE", () => {
     const past = new Date(Date.now() - 1000).toISOString();
     const earlier = new Date(Date.now() - 200000).toISOString();
     const artifact = signPayload(makePayload({ issued_at: earlier, expires_at: past }), kp.privateKey, "test-key-1");
-    const r = checkEntitlement({ _loadArtifact: () => artifact, _loadGateState: () => ({ latest_observed_at: 0, last_validated_at: null }), _saveGateState: () => {} });
+    const r = checkEntitlement({ _loadArtifact: () => artifact, _loadGateState: () => ({ latest_observed_at: 0, last_validated_at: null }), _saveGateState: () => {}, installationId: "12345678-1234-4123-a123-123456789abd" });
     assert.equal(r.allowed, false);
     assert.equal(r.state, GateState.EXPIRED);
   });
@@ -190,28 +192,28 @@ describe("Gate: CLOCK_ROLLBACK", () => {
 
   it("allows normal forward time", () => {
     const artifact = signPayload(makePayload(), kp.privateKey, "test-key-1");
-    const r = checkEntitlement({ _loadArtifact: () => artifact, _loadGateState: () => ({ latest_observed_at: Date.now() - 1000, last_validated_at: null }), _saveGateState: () => {} });
+    const r = checkEntitlement({ _loadArtifact: () => artifact, _loadGateState: () => ({ latest_observed_at: Date.now() - 1000, last_validated_at: null }), _saveGateState: () => {}, installationId: "12345678-1234-4123-a123-123456789abd" });
     assert.equal(r.allowed, true);
   });
   it("blocks significant backward movement", () => {
     const artifact = signPayload(makePayload(), kp.privateKey, "test-key-1");
     const future = Date.now() + 3600000;
-    const r = checkEntitlement({ _loadArtifact: () => artifact, _loadGateState: () => ({ latest_observed_at: future, last_validated_at: null }), _saveGateState: () => {}, now: new Date() });
+    const r = checkEntitlement({ _loadArtifact: () => artifact, _loadGateState: () => ({ latest_observed_at: future, last_validated_at: null }), _saveGateState: () => {}, installationId: "12345678-1234-4123-a123-123456789abd", now: new Date() });
     assert.equal(r.allowed, false);
     assert.equal(r.state, GateState.CLOCK_ROLLBACK);
   });
   it("allows small adjustments within threshold", () => {
     const artifact = signPayload(makePayload(), kp.privateKey, "test-key-1");
     const now = Date.now();
-    const r = checkEntitlement({ _loadArtifact: () => artifact, _loadGateState: () => ({ latest_observed_at: now - 120000, last_validated_at: null }), _saveGateState: () => {}, now: new Date(now) });
+    const r = checkEntitlement({ _loadArtifact: () => artifact, _loadGateState: () => ({ latest_observed_at: now - 120000, last_validated_at: null }), _saveGateState: () => {}, installationId: "12345678-1234-4123-a123-123456789abd", now: new Date(now) });
     assert.equal(r.allowed, true);
   });
   it("rollback persists across calls", () => {
     const artifact = signPayload(makePayload(), kp.privateKey, "test-key-1");
     let saved = { latest_observed_at: 0, last_validated_at: null };
     const future = Date.now() + 3600000;
-    checkEntitlement({ _loadArtifact: () => artifact, _loadGateState: () => saved, _saveGateState: (s) => { saved = s; }, now: new Date(future) });
-    const r = checkEntitlement({ _loadArtifact: () => artifact, _loadGateState: () => saved, _saveGateState: () => {}, now: new Date(Date.now()) });
+    checkEntitlement({ _loadArtifact: () => artifact, _loadGateState: () => saved, _saveGateState: (s) => { saved = s; }, installationId: "12345678-1234-4123-a123-123456789abd", now: new Date(future) });
+    const r = checkEntitlement({ _loadArtifact: () => artifact, _loadGateState: () => saved, _saveGateState: () => {}, installationId: "12345678-1234-4123-a123-123456789abd", now: new Date(Date.now()) });
     assert.equal(r.allowed, false);
     assert.equal(r.state, GateState.CLOCK_ROLLBACK);
   });
@@ -224,13 +226,13 @@ describe("Gate: Pipeline Order + Security", () => {
   const { checkEntitlement, GateState, GateMessages } = require("../src/entitlement/gate");
 
   it("blocked returns allowed:false with state and message", () => {
-    const r = checkEntitlement({ _loadArtifact: () => null, _loadGateState: () => ({ latest_observed_at: 0, last_validated_at: null }), _saveGateState: () => {} });
+    const r = checkEntitlement({ _loadArtifact: () => null, _loadGateState: () => ({ latest_observed_at: 0, last_validated_at: null }), _saveGateState: () => {}, installationId: "12345678-1234-4123-a123-123456789abd" });
     assert.equal(r.allowed, false);
     assert.ok(typeof r.state === "string" && typeof r.message === "string");
   });
   it("valid returns allowed:true with entitlement", () => {
     const artifact = signPayload(makePayload(), kp.privateKey, "test-key-1");
-    const r = checkEntitlement({ _loadArtifact: () => artifact, _loadGateState: () => ({ latest_observed_at: 0, last_validated_at: null }), _saveGateState: () => {}, now: new Date() });
+    const r = checkEntitlement({ _loadArtifact: () => artifact, _loadGateState: () => ({ latest_observed_at: 0, last_validated_at: null }), _saveGateState: () => {}, installationId: "12345678-1234-4123-a123-123456789abd", now: new Date() });
     assert.equal(r.allowed, true);
     assert.equal(r.entitlement.plan_id, "pro");
   });
@@ -240,10 +242,10 @@ describe("Gate: Pipeline Order + Security", () => {
     }
   });
   it("completely invalid input fails closed", () => {
-    const r = checkEntitlement({ _loadArtifact: () => "invalid", _loadGateState: () => ({ latest_observed_at: 0, last_validated_at: null }), _saveGateState: () => {} });
+    const r = checkEntitlement({ _loadArtifact: () => "invalid", _loadGateState: () => ({ latest_observed_at: 0, last_validated_at: null }), _saveGateState: () => {}, installationId: "12345678-1234-4123-a123-123456789abd" });
     assert.equal(r.allowed, false);
   });
   it("disk error throws (does not fail open)", () => {
-    assert.throws(() => checkEntitlement({ _loadArtifact: () => { throw new Error("disk"); }, _loadGateState: () => ({ latest_observed_at: 0, last_validated_at: null }), _saveGateState: () => {} }));
+    assert.throws(() => checkEntitlement({ _loadArtifact: () => { throw new Error("disk"); }, _loadGateState: () => ({ latest_observed_at: 0, last_validated_at: null }), _saveGateState: () => {}, installationId: "12345678-1234-4123-a123-123456789abd" }));
   });
 });

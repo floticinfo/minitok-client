@@ -5,7 +5,7 @@
  *
  * Precedence:
  *   1. CLI --server flag (highest)
- *   2. MINITOK_SERVER_URL env var
+ *   2. minitok_SERVER_URL env var
  *   3. ~/.minitok/config.json (persistent)
  *   4. Default: https://api.minitok.dev
  */
@@ -54,8 +54,8 @@ function resolveServerUrl(options = {}) {
   }
 
   // 2. Environment variable
-  if (process.env.MINITOK_SERVER_URL) {
-    return _normalizeUrl(process.env.MINITOK_SERVER_URL);
+  if (process.env.minitok_SERVER_URL) {
+    return _normalizeUrl(process.env.minitok_SERVER_URL);
   }
 
   // 3. Persistent config

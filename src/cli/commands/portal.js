@@ -11,11 +11,8 @@ async function cmdPortal(opts) {
     return 1;
   }
 
-  // Production provider is Dodo Payments → /v1/portal/dodo.
-  // --stripe preserves backward compatibility with the legacy Stripe portal
-  // (/v1/portal) for environments that still run Stripe.
-  const endpoint = opts?.stripe ? "/v1/portal" : "/v1/portal/dodo";
-  console.log("Opening billing portal..." + (opts?.stripe ? " (Stripe)" : " (Dodo)"));
+  const endpoint = "/v1/portal/dodo";
+  console.log("Opening Dodo billing portal...");
 
   let result;
   try {

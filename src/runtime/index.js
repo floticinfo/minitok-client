@@ -13,7 +13,7 @@ function createRuntimeServices(options = {}) {
   const knowledgePath = options.knowledgePath;
   const entitlementDir = options.entitlementDir;
   const auditPath = options.auditPath;
-  
+
   return {
     knowledge: new KnowledgeService(knowledgePath),
     analysis: new AnalysisService(knowledgePath),

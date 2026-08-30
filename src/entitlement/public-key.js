@@ -1,7 +1,7 @@
 "use strict";
 
 /**
- * Public Key Infrastructure — Ed25519 key registry with rotation support.
+ * Public Key Infrastructure ??Ed25519 key registry with rotation support.
  *
  * This module manages the public keys used for entitlement signature
  * verification. It supports multiple concurrent keys for rotation.
@@ -28,7 +28,14 @@ const crypto = require("crypto");
  */
 const KEY_REGISTRY = new Map();
 
-// ── Production public keys ──────────────────────────────────────
+
+
+
+
+
+
+
+// ?�?�?Production public keys ?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?
 // These are the Ed25519 public keys used by the minitok production
 // server to sign entitlements. The client uses these to verify
 // entitlement signatures locally.
@@ -37,7 +44,8 @@ const KEY_REGISTRY = new Map();
 // entries until all entitlements signed with that key have expired.
 // NEVER remove an entry that may still be referenced by active entitlements.
 
-// Production key — key-2024-01-prod (server ED25519_KEY_ID)
+
+// Production key ??key-2024-01-prod (server ED25519_KEY_ID)
 KEY_REGISTRY.set(
   "key-2024-01-prod",
   "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAGFySMKL6eeHvyQ/XdCe7c0OmdHxHf/RHz/Hp1BB3f1c=\n-----END PUBLIC KEY-----"

@@ -4,7 +4,7 @@
  * Entitlement Model — schema validation and canonical serialization.
  *
  * The entitlement is the signed authorization artifact that governs
- * MINITOK's runtime access. This module defines the schema and provides
+ * minitok's runtime access. This module defines the schema and provides
  * deterministic canonicalization for signature verification.
  *
  * Signed payload structure (new format with installation binding):
@@ -62,8 +62,7 @@ function validatePayload(payload) {
 
   const required = ["entitlement_id", "plan_id", "features", "max_devices", "issued_at", "expires_at", "key_id"];
   // PHASE 13: installation_id is now part of the signed payload.
-  // For backward compatibility, old entitlements without it are accepted
-  // but flagged. New entitlements MUST have it.
+  // Legacy artifacts remain parseable for migration diagnostics but are not runtime-authorized.
   const hasInstallationId = "installation_id" in payload;
 
   for (const field of required) {

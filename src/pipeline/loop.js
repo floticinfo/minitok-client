@@ -109,7 +109,7 @@ async function promptConfirmation(changesResult, opts) {
   });
 }
 
-async function runPipeline(task, opts = {}) {
+async function runPipelineInWorkspace(task, opts = {}) {
   const startTime = Date.now();
   const config = loadConfig(opts.configPath, opts.overrides);
   const repoRoot = opts.repoRoot || process.cwd();
@@ -121,8 +121,9 @@ async function runPipeline(task, opts = {}) {
   // Entitlement gate — must pass before any LLM/provider work
   let gateResult = null;
   if (!opts.skipEntitlementCheck) {
-    const { checkEntitlement, GateState } = require("../entitlement/gate");
-    gateResult = checkEntitlement({ entitlementDir: opts.entitlementDir });
+    const { checkEntitlementOnline } = require("../entitlement/online");
+    const { GateState } = require("../entitlement/gate");
+    gateResult = await checkEntitlementOnline({ entitlementDir: opts.entitlementDir, serverUrl: opts.serverUrl || resolveServerUrl() });
     if (!gateResult.allowed) {
       console.error(`\n🚫 Entitlement check failed: ${gateResult.message}`);
       if (gateResult.state === GateState.OFFLINE_GRACE) {
@@ -354,4 +355,18 @@ async function runPipeline(task, opts = {}) {
   return results;
 }
 
-module.exports = { runPipeline, getRepoContext, compactContext, promptConfirmation };
+async function runPipeline(task, opts = {}) {
+  if (opts.isolatedWorkspace) return runPipelineInWorkspace(task, opts);
+  const { createIsolatedWorkspace, applyWorkspaceDiff, removeIsolatedWorkspace } = require("../workspace/isolation");
+  const repoRoot = opts.repoRoot || process.cwd();
+  const isolated = createIsolatedWorkspace(repoRoot, opts.isolationRoot);
+  try {
+    const result = await runPipelineInWorkspace(task, { ...opts, repoRoot: isolated.path, isolatedWorkspace: true });
+    if (result.success && !opts.dryRun) applyWorkspaceDiff(repoRoot, isolated.path);
+    return { ...result, isolation: { path: isolated.path, applied: result.success && !opts.dryRun } };
+  } finally {
+    removeIsolatedWorkspace(isolated.path);
+  }
+}
+
+module.exports = { runPipeline, runPipelineInWorkspace, getRepoContext, compactContext, promptConfirmation };

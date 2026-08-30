@@ -9,13 +9,12 @@
  * Flow:
  *   1. Resolve server URL
  *   2. Generate installation_id (UUID)
- *   3. POST /v1/activate { key, installation_id, hostname }
+ *   3. POST /v1/activate { key, installation_id }
  *   4. Store entitlement artifact in ~/.minitok/entitlement/
  *   5. Store installation token in ~/.minitok/entitlement/installation-token.json
  *   6. Update gate-state.json for offline grace baseline
  */
 
-const os = require("os");
 const https = require("https");
 const http = require("http");
 const { randomUUID } = require("crypto");
@@ -36,8 +35,6 @@ async function cmdActivate(key, opts) {
 
   // 2. Generate installation identity
   const installationId = randomUUID();
-  const hostname = os.hostname();
-
   console.log(`Activating against ${serverUrl}...`);
 
   // 3. Call POST /v1/activate
@@ -46,7 +43,6 @@ async function cmdActivate(key, opts) {
     result = await _httpPost(`${serverUrl}/v1/activate`, {
       key,
       installation_id: installationId,
-      hostname,
     });
   } catch (err) {
     console.error(`Error: Cannot connect to server at ${serverUrl}\n${err.message}`);
@@ -95,7 +91,7 @@ async function cmdActivate(key, opts) {
     return 1;
   }
 
-  // 6. Initialize gate state for offline grace baseline
+  // 6. Initialize gate state baseline
   try {
     const now = new Date();
     saveGateState({

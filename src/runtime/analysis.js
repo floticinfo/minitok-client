@@ -8,13 +8,13 @@ class AnalysisService {
   constructor(knowledgePath) {
     this._knowledge = new KnowledgeService(knowledgePath);
   }
-  
+
   analyze(project) {
     const outcomes = this._knowledge.query().outcomes;
     const analysis = analyzeFailurePatterns(outcomes);
     return analysis;
   }
-  
+
   recommend(project, currentPolicy = {}) {
     const outcomes = this._knowledge.query().outcomes;
     const analysis = analyzeFailurePatterns(outcomes);

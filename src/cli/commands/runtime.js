@@ -25,7 +25,7 @@ async function cmdRuntimeStart(opts) {
     console.log(`minitok runtime already running (PID ${_getPid()})`);
     return 0;
   }
-  
+
   const { RuntimeServer } = require("../../runtime/server");
   const server = new RuntimeServer({
     port: opts.port || 4578,
@@ -33,7 +33,7 @@ async function cmdRuntimeStart(opts) {
     entitlementDir: opts.entitlementDir,
     auditPath: opts.auditPath,
   });
-  
+
   await server.start();
   // Keep process alive
   return new Promise(() => {});

@@ -12,17 +12,13 @@ async function cmdCheckout(opts) {
   }
 
   const planId = opts?.plan || "pro";
-  // Production provider is Dodo Payments. The Dodo checkout endpoint
-  // (/v1/checkout/dodo) resolves the product server-side from the DB mapping.
-  // --stripe preserves backward compatibility with the legacy Stripe path
-  // (/v1/checkout) for environments that still run Stripe.
-  const endpoint = opts?.stripe ? "/v1/checkout" : "/v1/checkout/dodo";
+  const endpoint = "/v1/checkout/dodo";
   console.log("Creating checkout session for plan: " + planId + " (" + endpoint + ")");
 
   let result;
   try {
     result = await _httpPost("" + serverUrl + endpoint,
-      { plan_id: planId },
+      { planId },
       { Authorization: "Bearer " + token });
   } catch (err) {
     console.error("Error: Cannot connect to server at " + serverUrl);

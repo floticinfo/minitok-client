@@ -245,10 +245,12 @@ class CustomProvider extends LLMProvider {
   async isAvailable() { return Boolean(this.baseUrl); }
   async complete(messages, options = {}) {
     if (!this.baseUrl) throw new Error(`${this.name}: base_url not configured`);
+    const auth = await this._resolveAuth();
+    const apiKey = this.apiKey || auth.token || "";
     const model = options.model || this.config.model || (this.models[0]?.id) || "default";
     const body = { model, messages: messages.map(m => ({ role: m.role, content: m.content })), max_tokens: options.max_tokens || 4096 };
-    const headers = { "Content-Type": "application/json" };
-    if (this.apiKey) headers.Authorization = "Bearer " + this.apiKey;
+    const headers = { "Content-Type": "application/json", ...(auth.headers || {}) };
+    if (apiKey && !headers.Authorization) headers.Authorization = "Bearer " + apiKey;
     const res = await fetchWithTimeout(`${this.baseUrl}/v1/chat/completions`, { method: "POST", headers, body: JSON.stringify(body) });
     if (!res.ok) throw new Error(`${this.name} error ${res.status}: ${await res.text()}`);
     const data = await res.json();

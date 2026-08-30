@@ -1,15 +1,14 @@
 "use strict";
 
-const { checkEntitlement } = require("../entitlement/gate");
+const { checkEntitlementOnline } = require("../entitlement/online");
 
 class EntitlementService {
   constructor(entitlementDir) {
     this._dir = entitlementDir;
   }
-  
-  status() {
-    const result = checkEntitlement({ entitlementDir: this._dir });
-    return result;
+
+  status(options = {}) {
+    return checkEntitlementOnline({ ...options, entitlementDir: this._dir });
   }
 }
 

@@ -44,18 +44,18 @@ function createRejectThenApproveProvider() {
       const sys = msgs.find(m => m.role === "system")?.content || "";
       let text;
       if (sys.includes("architect")) {
-        text = JSON.stringify({ task_summary: "Create recovery-proof.txt", steps: [{ id: 1, action: "create", file: "recovery-proof.txt", description: "Create file with MINITOK_RECOVERY_PASS", rationale: "test" }], estimated_files: 1, risk_level: "low" });
+        text = JSON.stringify({ task_summary: "Create recovery-proof.txt", steps: [{ id: 1, action: "create", file: "recovery-proof.txt", description: "Create file with minitok_RECOVERY_PASS", rationale: "test" }], estimated_files: 1, risk_level: "low" });
       } else if (sys.includes("engineer")) {
         implCalls++;
         if (implCalls <= 1) {
           text = JSON.stringify({ changes: [{ file: "recovery-proof.txt", action: "create", content: "WRONG_CONTENT" }], summary: "Wrong content", files_changed: 1 });
         } else {
-          text = JSON.stringify({ changes: [{ file: "recovery-proof.txt", action: "create", content: "MINITOK_RECOVERY_PASS" }], summary: "Correct content", files_changed: 1 });
+          text = JSON.stringify({ changes: [{ file: "recovery-proof.txt", action: "create", content: "minitok_RECOVERY_PASS" }], summary: "Correct content", files_changed: 1 });
         }
       } else if ((sys.includes("review") || sys.includes("code reviewer")) && !sys.includes("autonomous")) {
         verifierCalls++;
         if (verifierCalls <= 1) {
-          text = JSON.stringify({ verdict: "REJECT", confidence: 0.2, summary: "Content must be MINITOK_RECOVERY_PASS", findings: [{ severity: "error", file: "recovery-proof.txt", line: 1, message: "Wrong content" }], security_findings: [], risk_level: "medium", test_suggestions: [] });
+          text = JSON.stringify({ verdict: "REJECT", confidence: 0.2, summary: "Content must be minitok_RECOVERY_PASS", findings: [{ severity: "error", file: "recovery-proof.txt", line: 1, message: "Wrong content" }], security_findings: [], risk_level: "medium", test_suggestions: [] });
         } else {
           text = JSON.stringify({ verdict: "APPROVE", confidence: 0.95, summary: "Correct content", findings: [], security_findings: [], risk_level: "low", test_suggestions: [] });
         }
@@ -114,7 +114,7 @@ describe("PHASE 9: REJECT Recovery E2E", () => {
     const { RejectThenApprove, getVerifierCalls } = createRejectThenApproveProvider();
     pm.createProvider = (n) => n === "rta" ? new RejectThenApprove() : origCreateProvider(n);
     try {
-      const r = await runPipeline("Create recovery-proof.txt with MINITOK_RECOVERY_PASS", {
+      const r = await runPipeline("Create recovery-proof.txt with minitok_RECOVERY_PASS", {
         repoRoot: repoDir, providerOverride: "rta", skipEntitlementCheck: true,
         overrides: { budget: { max_cycles: 3 } },
       });
@@ -127,7 +127,7 @@ describe("PHASE 9: REJECT Recovery E2E", () => {
       assert.ok(getVerifierCalls() >= 2, "Verifier called >= 2 times");
       const fp = p.join(repoDir, "recovery-proof.txt");
       assert.ok(fs.existsSync(fp), "File must exist");
-      assert.equal(fs.readFileSync(fp, "utf-8"), "MINITOK_RECOVERY_PASS");
+      assert.equal(fs.readFileSync(fp, "utf-8"), "minitok_RECOVERY_PASS");
       console.log("\n✅ REJECT → RECOVERY → APPROVE: PASS");
     } finally { pm.createProvider = origCreateProvider; }
   });

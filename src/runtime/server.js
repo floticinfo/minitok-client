@@ -21,11 +21,11 @@ class RuntimeServer {
     this._activeRequests = 0;
     this._routes = createRoutes(this._services);
   }
-  
+
   async start() {
     this._writePid();
     this._server = http.createServer((req, res) => this._handleRequest(req, res));
-    
+
     return new Promise((resolve, reject) => {
       this._server.on("error", reject);
       this._server.listen(this._port, HOST, () => {
@@ -34,7 +34,7 @@ class RuntimeServer {
       });
     });
   }
-  
+
   async stop() {
     if (this._idleTimer) clearTimeout(this._idleTimer);
     this._removePid();
@@ -42,11 +42,11 @@ class RuntimeServer {
       return new Promise(resolve => this._server.close(resolve));
     }
   }
-  
+
   async _handleRequest(req, res) {
     this._activeRequests++;
     this._resetIdleTimer();
-    
+
     try {
       // Only allow localhost
       const remoteAddr = req.socket?.remoteAddress || "";
@@ -54,25 +54,25 @@ class RuntimeServer {
         this._sendJson(res, 403, { error: "Forbidden: localhost only" });
         return;
       }
-      
+
       const url = new URL(req.url, `http://${HOST}:${this._port}`);
       const routeKey = `${req.method} ${url.pathname}`;
-      
+
       // Parse body for POST
       let body = null;
       if (req.method === "POST") {
         body = await this._readBody(req);
       }
-      
+
       const route = this._routes[routeKey];
       if (!route) {
         this._sendJson(res, 404, { error: "Not found" });
         return;
       }
-      
+
       const params = {};
       url.searchParams.forEach((v, k) => { params[k] = v; });
-      
+
       const result = await route({ body: body || {}, params });
       this._sendJson(res, result.status || 200, result.data || result);
     } catch (err) {
@@ -82,7 +82,7 @@ class RuntimeServer {
       this._resetIdleTimer();
     }
   }
-  
+
   _readBody(req) {
     return new Promise((resolve) => {
       const chunks = [];
@@ -94,12 +94,12 @@ class RuntimeServer {
       req.on("error", () => resolve(null));
     });
   }
-  
+
   _sendJson(res, status, data) {
     res.writeHead(status, { "Content-Type": "application/json" });
     res.end(JSON.stringify(data));
   }
-  
+
   _resetIdleTimer() {
     if (this._idleTimer) clearTimeout(this._idleTimer);
     if (this._activeRequests === 0) {
@@ -111,18 +111,18 @@ class RuntimeServer {
       if (this._idleTimer.unref) this._idleTimer.unref();
     }
   }
-  
+
   _writePid() {
     try {
       fs.mkdirSync(path.dirname(PID_FILE), { recursive: true });
       fs.writeFileSync(PID_FILE, String(process.pid), "utf-8");
     } catch {}
   }
-  
+
   _removePid() {
     try { fs.unlinkSync(PID_FILE); } catch {}
   }
-  
+
   get port() { return this._port; }
   get services() { return this._services; }
 }
