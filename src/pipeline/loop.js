@@ -295,7 +295,7 @@ async function runPipelineInWorkspace(task, opts = {}) {
       cycle,
       intelligence: intelResult.intelligence,
       plan: planResult.plan,
-      implement: { summary: implResult.changes.summary, files_changed: implResult.changes.files_changed },
+      implement: { summary: implResult.changes.summary, files_changed: implResult.changes.files_changed, changed_files: (implResult.changes.changes || []).map(change => change.file) },
       check: checkResult.evidence,
       review: verifyResult.review,
       verify: verifyResult.review,
@@ -399,7 +399,7 @@ async function runPipelineInWorkspace(task, opts = {}) {
         work: results.cycles.at(-1)?.implement || null,
         review: results.cycles.at(-1)?.review || null,
       },
-      changed_files: [],
+      changed_files: results.cycles.flatMap(c => c.implement?.changed_files || []),
       verification: {
         commands: results.cycles.map(c => c.check?.command).filter(Boolean),
         exit_status: results.cycles.at(-1)?.check?.exit_code ?? null,
