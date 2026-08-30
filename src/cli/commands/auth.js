@@ -7,6 +7,7 @@
 
 const { TokenStore } = require("../../auth/token-store");
 const { OAuthFlow, OAUTH_CONFIGS } = require("../../auth/oauth");
+const { saveCustomerToken } = require("../../auth/customer-token");
 const readline = require("readline");
 
 const tokenStore = new TokenStore();
