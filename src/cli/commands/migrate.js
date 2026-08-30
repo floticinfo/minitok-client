@@ -12,7 +12,7 @@ npm run lint
 `;
 
 const minitok_YML = `# minitok configuration
-# See docs/ARCHITECTURE.md for full schema reference.
+# Pipeline state is stored under .minitok/contracts/.
 
 project:
   name: "{{PROJECT_NAME}}"
