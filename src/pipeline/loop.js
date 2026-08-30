@@ -165,21 +165,27 @@ async function runPipelineInWorkspace(task, opts = {}) {
     }
   }
 
-  const maxCycles = config.budget.max_cycles || 3;
-  const tokenBudget = config.budget.token_budget || 500000; // 500K tokens default cap
+  const hardCycleLimit = Math.max(1, Number(config.budget.max_cycles_hard_limit) || 100);
+  const hardTokenLimit = Math.max(1, Number(config.budget.token_hard_limit) || 2000000);
+  const maxCyclesSetting = config.budget.max_cycles;
+  const maxCycles = maxCyclesSetting === "unlimited" || maxCyclesSetting === 0 || maxCyclesSetting == null ? Infinity : Math.min(Number(maxCyclesSetting) || 1, hardCycleLimit);
+  const tokenSetting = config.budget.token_budget;
+  const tokenBudget = tokenSetting === "unlimited" || tokenSetting === 0 || tokenSetting == null ? Infinity : Math.min(Number(tokenSetting) || 1, hardTokenLimit);
   const originalGoal = task;
   const budgetChars = config.execution?.context_budget_chars || DEFAULT_CONTEXT_BUDGET_CHARS;
   const results = { cycles: [], totalTokens: { input: 0, output: 0 }, goal: originalGoal, evolution: {} };
   let confirmationGranted = false; // Track whether user approved changes for this run
+  let stagnantCycles = 0;
+  let lastChangeSignature = "";
 
   // Self-evolution: adapt policy from past outcomes
   const knowledgeStore = new KnowledgeStore(opts.knowledgePath);
-  let adaptedMaxCycles = maxCycles;
+  let adaptedMaxCycles = Math.min(maxCycles, hardCycleLimit);
   if (knowledgeStore.size > 0) {
     const patterns = analyzeFailurePatterns(knowledgeStore.getAll());
     if (patterns.patterns.length > 0) {
       const { recommended, reasons } = recommendPolicy(patterns.patterns, {
-        max_cycles: maxCycles,
+        max_cycles: Number.isFinite(maxCycles) ? maxCycles : hardCycleLimit,
       });
       if (reasons.length > 0) {
         console.log("  🧬 Adaptive policy:");
@@ -210,7 +216,7 @@ async function runPipelineInWorkspace(task, opts = {}) {
     }
     // 💰 Token budget cap — prevent runaway LLM usage
     const totalUsed = results.totalTokens.input + results.totalTokens.output;
-    if (totalUsed >= tokenBudget) {
+    if (totalUsed >= tokenBudget || totalUsed >= hardTokenLimit) {
       console.log(`\n💰 Token budget reached (${totalUsed.toLocaleString()} / ${tokenBudget.toLocaleString()}). Stopping.`);
       break;
     }
@@ -293,6 +299,15 @@ async function runPipelineInWorkspace(task, opts = {}) {
     const verdict = checkPassed ? reviewVerdict : "REJECT";
     const icon = verdict === "APPROVE" ? "✅" : "❌";
     console.log(`     Review: ${icon} ${verdict} (confidence: ${verifyResult.review.confidence || "N/A"})`);
+
+    const changeSignature = JSON.stringify({ status: verdict, files: implResult.changes?.changes?.map(change => change.file) || [] });
+    if (changeSignature === lastChangeSignature || !(implResult.changes?.changes || []).length) stagnantCycles += 1;
+    else stagnantCycles = 0;
+    lastChangeSignature = changeSignature;
+    if (stagnantCycles >= (config.budget.stagnation_limit || 3)) {
+      console.log(`\n🛑 Stagnation limit reached (${stagnantCycles} cycles). Stopping.`);
+      break;
+    }
 
     results.cycles.push({
       cycle,
