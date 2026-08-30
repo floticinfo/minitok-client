@@ -104,7 +104,9 @@ class AuthManager {
       key = process.env[envName] || "";
     }
     if (!key) return { headers: {}, token: null };
-    return { headers: { "x-api-key": key }, token: key };
+    const scheme = auth.scheme || "x-api-key";
+    const header = auth.header || (scheme === "Bearer" ? "Authorization" : "x-api-key");
+    return { headers: { [header]: scheme === "raw" || scheme === "x-api-key" ? key : `${scheme} ${key}` }, token: key };
   }
 
   // ─── Auth type: oauth ───

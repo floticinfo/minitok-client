@@ -10,6 +10,6 @@ describe("generic custom provider", () => {
     assert.equal(provider.name, "any-provider");
     assert.equal(provider.baseUrl, "https://example.test/v1");
     const auth = await provider._resolveAuth();
-    assert.equal(auth.headers["x-api-key"], "key");
+    assert.equal(auth.headers["X-Token"], "key");
   });
 });

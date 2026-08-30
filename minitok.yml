@@ -12,6 +12,8 @@ providers:
     auth:
       type: api_key
       key: "${CAMEL_STREAM_API_KEY}"
+      scheme: Bearer
+      header: Authorization
     models:
       - id: auto
 
