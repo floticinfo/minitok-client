@@ -278,8 +278,8 @@ function createProvider(name, config = {}) {
     case "openrouter": return new OpenRouterProvider(config);
   }
   // Tier 2/3: Custom provider (has base_url or models array)
-  if (config.base_url || config.models) {
-    return new CustomProvider({ ...config, _name: n });
+  if (config.base_url || config.endpoint || config.models) {
+    return new CustomProvider({ ...config, base_url: config.base_url || config.endpoint, _name: n });
   }
   throw new Error(`Unknown LLM provider: ${name}. Set base_url for custom providers.`);
 }
