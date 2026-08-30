@@ -45,6 +45,8 @@
   "files": [
     "bin/",
     "src/",
+    "scripts/verify.mjs",
+    "VERIFY_CMD.mjs",
     "!src/**/*.test.js",
     "LICENSE",
     "README.md",

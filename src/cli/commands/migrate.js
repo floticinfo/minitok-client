@@ -5,18 +5,18 @@ const path = require("path");
 const git = require("../../git/operations");
 const { WorkspaceManager } = require("../../workspace/manager");
 
-const VERIFY_CMD = `#!/usr/bin/env bash
-# Windows users need Git Bash or WSL to run this gate.
-set -euo pipefail
-if command -v npm >/dev/null 2>&1; then
-  npm test
-  npm run lint
-elif command -v pytest >/dev/null 2>&1; then
-  pytest -q
-else
-  echo "No supported verifier found: install npm or pytest" >&2
-  exit 127
-fi
+const VERIFY_CMD = `import { execFileSync } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const root = path.dirname(fileURLToPath(import.meta.url));
+const npm = process.platform === "win32" ? "npm.cmd" : "npm";
+try {
+  execFileSync(npm, ["test"], { cwd: root, stdio: "inherit" });
+  execFileSync(npm, ["run", "lint"], { cwd: root, stdio: "inherit" });
+} catch (error) {
+  process.exit(typeof error.status === "number" ? error.status : 1);
+}
 `;
 
 const minitok_YML = `# minitok configuration
@@ -86,7 +86,7 @@ async function cmdMigrate(repoPath, name) {
   const projectName = name || path.basename(resolved);
   const minitokDir = path.join(resolved, ".minitok");
   const configPath = path.join(resolved, "minitok.yml");
-  const verifyPath = path.join(resolved, "VERIFY_CMD.sh");
+  const verifyPath = path.join(resolved, "VERIFY_CMD.mjs");
   const contractsDir = path.join(minitokDir, "contracts");
 
   // Create .minitok state and contracts directories
@@ -103,10 +103,9 @@ async function cmdMigrate(repoPath, name) {
 
   if (!fs.existsSync(verifyPath)) {
     fs.writeFileSync(verifyPath, VERIFY_CMD, "utf-8");
-    if (process.platform !== "win32") fs.chmodSync(verifyPath, 0o755);
-    console.log(`Created VERIFY_CMD.sh`);
+    console.log(`Created VERIFY_CMD.mjs`);
   } else {
-    console.log(`VERIFY_CMD.sh already exists, skipping`);
+    console.log(`VERIFY_CMD.mjs already exists, skipping`);
   }
 
   // Create .gitignore entries if needed
