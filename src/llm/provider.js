@@ -25,19 +25,28 @@ class LLMProvider {
  * Fetch with timeout and response size limit to prevent memory exhaustion.
  */
 async function fetchWithTimeout(url, opts = {}, timeoutMs = FETCH_TIMEOUT_MS) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await fetch(url, { ...opts, signal: controller.signal });
-    // Check Content-Length header before reading body
-    const contentLength = parseInt(res.headers.get("content-length") || "0", 10);
-    if (contentLength > MAX_RESPONSE_BYTES) {
-      throw new Error(`Response too large: ${contentLength} bytes (max ${MAX_RESPONSE_BYTES})`);
+  const attempts = opts.retry_network_errors === false ? 1 : 5;
+  const requestOpts = { ...opts };
+  delete requestOpts.retry_network_errors;
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(url, { ...requestOpts, signal: controller.signal });
+      const contentLength = parseInt(res.headers.get("content-length") || "0", 10);
+      if (contentLength > MAX_RESPONSE_BYTES) throw new Error(`Response too large: ${contentLength} bytes (max ${MAX_RESPONSE_BYTES})`);
+      return res;
+    } catch (error) {
+      lastError = error;
+      const networkFailure = error?.name === "TypeError" || /ECONNRESET|ECONNREFUSED|UND_ERR|fetch failed/i.test(error?.message || "");
+      if (!networkFailure || attempt === attempts) throw error;
+      await new Promise(resolve => setTimeout(resolve, 250 * attempt));
+    } finally {
+      clearTimeout(timer);
     }
-    return res;
-  } finally {
-    clearTimeout(timer);
   }
+  throw lastError;
 }
 
 class AnthropicProvider extends LLMProvider {
