@@ -259,7 +259,11 @@ class CustomProvider extends LLMProvider {
     const model = options.model || this.config.model || (this.models[0]?.id) || "default";
     const body = { model, messages: messages.map(m => ({ role: m.role, content: m.content })), max_tokens: options.max_tokens || 4096 };
     const headers = { "Content-Type": "application/json", ...(auth.headers || {}) };
-    if (apiKey && !headers.Authorization) headers.Authorization = "Bearer " + apiKey;
+    if (apiKey && !headers.Authorization && !headers["x-api-key"]) {
+      const scheme = this.config.auth?.scheme || "Bearer";
+      const header = this.config.auth?.header || "Authorization";
+      headers[header] = scheme === "raw" ? apiKey : `${scheme} ${apiKey}`;
+    }
     const apiPath = this.baseUrl.endsWith("/v1") ? "/chat/completions" : "/v1/chat/completions";
     const res = await fetchWithTimeout(`${this.baseUrl}${apiPath}`, { method: "POST", headers, body: JSON.stringify(body) });
     if (!res.ok) throw new Error(`${this.name} error ${res.status}: ${await res.text()}`);

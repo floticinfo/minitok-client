@@ -16,9 +16,6 @@ const { TokenStore } = require("./token-store");
 const { OAuthFlow } = require("./oauth");
 const { IAMResolver } = require("./iam");
 const { ServiceAccountResolver } = require("./service-account");
-const fs = require("fs");
-const os = require("os");
-const path = require("path");
 
 const ALIAS_MAP = {
   claude: "anthropic",
@@ -82,10 +79,6 @@ class AuthManager {
 
   // ─── Legacy: api_key from config.api_key or env ───
   _resolveLegacyApiKey(name, config) {
-    if (name === "camel-stream") {
-      const kiloKey = this._readKiloCredential();
-      if (kiloKey) return { headers: { Authorization: `Bearer ${kiloKey}` }, token: kiloKey };
-    }
     const envMap = {
       anthropic: "ANTHROPIC_API_KEY",
       openai: "OPENAI_API_KEY",
@@ -102,28 +95,15 @@ class AuthManager {
     return { headers: { "x-api-key": key }, token: key };
   }
 
-  _readKiloCredential() {
-    try {
-      const filePath = path.join(os.homedir(), ".local", "share", "kilo", "auth.json");
-      const records = JSON.parse(fs.readFileSync(filePath, "utf-8"));
-      const record = records["camel-stream"];
-      return record && typeof record.key === "string" && record.key ? record.key : null;
-    } catch {
-      return null;
-    }
-  }
-
   // ─── Auth type: api_key ───
   _resolveApiKey(auth, config) {
     let key = auth.key || "";
-    if (!key && config._name === "camel-stream") key = this._readKiloCredential() || "";
     // Resolve ${ENV_VAR} references in key value
     if (typeof key === "string" && key.startsWith("${") && key.endsWith("}")) {
       const envName = key.slice(2, -1);
-      key = process.env[envName] || (config._name === "camel-stream" ? this._readKiloCredential() || "" : "");
+      key = process.env[envName] || "";
     }
     if (!key) return { headers: {}, token: null };
-    if (config._name === "camel-stream") return { headers: { Authorization: `Bearer ${key}` }, token: key };
     return { headers: { "x-api-key": key }, token: key };
   }
 
