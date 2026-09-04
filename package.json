@@ -1,6 +1,6 @@
 {
   "name": "@flotic/minitok",
-  "version": "1.3.2",
+  "version": "1.3.3",
   "description": "Repository-aware autonomous coding workflow driver",
   "main": "src/index.js",
   "bin": {
@@ -13,7 +13,7 @@
     "test": "node --test",
     "lint": "eslint --max-warnings=0 bin src tests",
     "typecheck": "tsc -p tsconfig.json",
-    "release:check": "npm test && npm run lint && npm run typecheck && npm audit --audit-level=high && node scripts/secret-scan.mjs && npm pack --dry-run --json && npm run test:packed-install && node VERIFY_CMD.mjs && npm run release:verify",
+    "release:check": "npm test && npm run lint && npm run typecheck && npm audit --audit-level=high && npm run docs:check && node scripts/secret-scan.mjs && npm pack --dry-run --json && npm run test:packed-install && node VERIFY_CMD.mjs && npm run release:verify",
     "docs:check": "node scripts/documentation-consistency.mjs",
     "release:verify": "node scripts/release-verify.mjs",
     "test:packed-install": "node scripts/packed-install-smoke.mjs",
@@ -51,11 +51,6 @@
   "files": [
     "bin/",
     "src/",
-    "scripts/verify.mjs",
-    "scripts/release-verify.mjs",
-    "scripts/secret-scan.mjs",
-    "VERIFY_CMD.mjs",
-    "scripts/documentation-consistency.mjs",
     "!src/**/*.test.js",
     "!src/cli/commands/admin-activate.js",
 

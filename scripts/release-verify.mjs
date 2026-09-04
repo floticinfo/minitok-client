@@ -28,8 +28,10 @@ try {
   const bytes = readFileSync(artifactPath);
   const digest = createHash("sha256").update(bytes).digest("hex");
   const manifest = artifact.files || [];
-  const expected = ["package.json", "src/index.js", "scripts/release-verify.mjs", "scripts/secret-scan.mjs"];
-  for (const file of expected) if (!manifest.some(entry => entry.path === file)) errors.push(`npm pack artifact omits ${file}`);
+  const expected = ["package.json", "bin/minitok.js", "src/index.js"];
+  const forbidden = ["VERIFY_CMD.mjs", "VERIFY_CMD.sh", "scripts/verify.mjs", "scripts/release-verify.mjs", "scripts/secret-scan.mjs", "scripts/documentation-consistency.mjs", "scripts/packed-install-smoke.mjs"];
+  for (const file of expected) if (!manifest.some(entry => entry.path === file)) errors.push(`npm pack artifact omits runtime file ${file}`);
+  for (const file of forbidden) if (manifest.some(entry => entry.path === file)) errors.push(`npm pack artifact includes development-only file ${file}`);
   if (!digest || artifact.size !== bytes.length || artifact.size <= 0) errors.push("npm pack artifact digest or size is invalid");
   if (!artifact.shasum || artifact.integrity === undefined) errors.push("npm pack artifact provenance metadata is missing");
   if (existsSync(artifactPath)) rmSync(artifactPath);

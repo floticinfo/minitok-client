@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.3 - 2026-09-04
+
+### Packaging
+
+- Removed development and release verification scripts from the published npm package; packed-install smoke now verifies that only runtime-required files are installed.
+- Updated package metadata and documentation for the 1.3.3 patch release.
+
 ## 1.3.2 - 2026-09-04
 
 ### Critical fixes

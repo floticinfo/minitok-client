@@ -46,7 +46,13 @@ const runCli = (cli, consumer, args) => {
 };
 const prefix = mkdtempSync(path.join(os.tmpdir(), "minitok-packed-"));
 try {
-  runNpm("npm pack", ["pack", "--pack-destination", prefix, ...npmNetworkFlags]);
+  const packOutput = runNpm("npm pack", ["pack", "--pack-destination", prefix, "--json", ...npmNetworkFlags]);
+  const packResult = JSON.parse(packOutput)[0];
+  const packedFiles = new Set((packResult.files || []).map(file => file.path));
+  const requiredFiles = ["package.json", "bin/minitok.js", "src/index.js"];
+  const forbiddenFiles = ["VERIFY_CMD.mjs", "VERIFY_CMD.sh", "scripts/verify.mjs", "scripts/release-verify.mjs", "scripts/secret-scan.mjs", "scripts/documentation-consistency.mjs", "scripts/packed-install-smoke.mjs"];
+  for (const file of requiredFiles) if (!packedFiles.has(file)) throw new Error(`final package omits runtime file: ${file}`);
+  for (const file of forbiddenFiles) if (packedFiles.has(file)) throw new Error(`final package includes development-only file: ${file}`);
   const archiveName = readdirSync(prefix).find(name => name.endsWith(".tgz"));
   if (!archiveName) throw new Error("npm pack did not produce a tarball");
   const archive = path.join(prefix, archiveName);

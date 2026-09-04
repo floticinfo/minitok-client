@@ -3,7 +3,7 @@
 > **Document type:** Technical policy — data processing, consent, and entitlement architecture
 > **Version:** 1.1.0
 > **Last updated:** 2026-09-04
-> **Applies to:** `@flotic/minitok` v1.3.2 and compatible `minitok-server` v0.1.0 API
+> **Applies to:** `@flotic/minitok` v1.3.3 and compatible `minitok-server` v0.1.0 API
 
 This is a technical description of current implementation behavior. It is not a privacy notice, data-processing agreement, or legal advice. Legal review is required before publication as a legal policy.
 

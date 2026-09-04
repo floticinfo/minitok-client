@@ -8,9 +8,9 @@
 npm install -g @flotic/minitok
 ```
 
-The current source release is `1.3.2`. Configure at least one LLM provider in `minitok.yml`; role-specific providers override `default_provider`, and otherwise the first configured provider is used.
+The current source release is `1.3.3`. Configure at least one LLM provider in `minitok.yml`; role-specific providers override `default_provider`, and otherwise the first configured provider is used.
 
-The npm tarball includes the files listed by `package.json`; source tests are not published. Release validation runs the packed-install smoke against a temporary npm prefix and executes the packaged CLI help, status, and auth status commands.
+The npm tarball includes only the runtime and end-user documentation listed by `package.json`; development and release verification scripts are not published, and source tests are not published. Release validation runs the packed-install smoke against a temporary npm prefix and executes the packaged CLI help, status, and auth status commands.
 
 ## For AI tools and agents
 

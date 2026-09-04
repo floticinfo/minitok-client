@@ -3,7 +3,7 @@
 > **Document type:** Technical data-processing boundary definition
 > **Version:** 1.1.0
 > **Last updated:** 2026-09-04
-> **Applies to:** `@flotic/minitok` client v1.3.2 and compatible `minitok-server` v0.1.0 API
+> **Applies to:** `@flotic/minitok` client v1.3.3 and compatible `minitok-server` v0.1.0 API
 
 This inventory describes implementation boundaries. It does not establish legal classifications, retention obligations, or jurisdiction-specific rights.
 
