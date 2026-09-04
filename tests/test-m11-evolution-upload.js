@@ -136,7 +136,7 @@ describe("M11 — Sanitizer: Validation", () => {
 // ============================================================
 describe("M11 — Upload Client: Entitlement Gate", () => {
   const VALID = { status: "success", cycles: 3, duration_ms: 1000, files_changed: 2 };
-  const OK_ENTITLEMENT = { allowed: true, entitlement: { features: ["evolution_upload"] } };
+  const OK_ENTITLEMENT = { allowed: true, entitlement: { plan_id: "open", features: ["evolution_upload"] } };
   const NO_FEATURE_ENTITLEMENT = { allowed: true, entitlement: { features: ["basic_features"] } };
   const DENIED_ENTITLEMENT = { allowed: false, state: "MISSING" };
   const OPTIN_ON = { isEnabled: () => true };
@@ -250,7 +250,7 @@ describe("M11 — Raw Payload Spy: No Project Data Leakage", () => {
       files_changed: 4, total_tokens: 12000, failure_category: "test",
     };
     await uploadEvolutionOutcome(outcome, {
-      _entitlementCheck: { allowed: true, entitlement: { features: ["evolution_upload"] } },
+      _entitlementCheck: { allowed: true, entitlement: { plan_id: "open", features: ["evolution_upload"] } },
       _optIn: { isEnabled: () => true },
       _httpPost: async (url, body) => { capturedPayload = body; return { ok: true, status: 201 }; },
       serverUrl: "https://server", token: "jwt",
@@ -267,7 +267,7 @@ describe("M11 — Raw Payload Spy: No Project Data Leakage", () => {
       total_tokens: 5000, failure_category: "lint",
     };
     await uploadEvolutionOutcome(outcome, {
-      _entitlementCheck: { allowed: true, entitlement: { features: ["evolution_upload"] } },
+      _entitlementCheck: { allowed: true, entitlement: { plan_id: "open", features: ["evolution_upload"] } },
       _optIn: { isEnabled: () => true },
       _httpPost: async (url, body) => { capturedPayload = body; return { ok: true, status: 201 }; },
       serverUrl: "https://server", token: "jwt",
@@ -289,7 +289,7 @@ describe("M11 — Raw Payload Spy: No Project Data Leakage", () => {
       source_code: "PROMPT_CANARY_ABCDE",
     };
     await uploadEvolutionOutcome(outcome, {
-      _entitlementCheck: { allowed: true, entitlement: { features: ["evolution_upload"] } },
+      _entitlementCheck: { allowed: true, entitlement: { plan_id: "open", features: ["evolution_upload"] } },
       _optIn: { isEnabled: () => true },
       _httpPost: async (url, body) => { capturedPayload = body; return { ok: true, status: 201 }; },
       serverUrl: "https://server", token: "jwt",
@@ -306,7 +306,7 @@ describe("M11 — Raw Payload Spy: No Project Data Leakage", () => {
       goal: "Fix authentication in /repo/project/src/auth.js",
     };
     await uploadEvolutionOutcome(outcome, {
-      _entitlementCheck: { allowed: true, entitlement: { features: ["evolution_upload"] } },
+      _entitlementCheck: { allowed: true, entitlement: { plan_id: "open", features: ["evolution_upload"] } },
       _optIn: { isEnabled: () => true },
       _httpPost: async (url, body) => { capturedPayload = body; return { ok: true, status: 201 }; },
       serverUrl: "https://server", token: "jwt",

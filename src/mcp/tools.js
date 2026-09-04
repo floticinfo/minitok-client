@@ -8,6 +8,7 @@ const TOOLS = [
       type: "object",
       properties: {
         limit: { type: "number", description: "Max outcomes to return" },
+        project: { type: "string", description: "Project scope" },
         filter: { type: "object", properties: { status: { type: "string" } } },
       },
     },
@@ -85,7 +86,37 @@ const TOOLS = [
 
 function getToolDefinitions() { return TOOLS; }
 
+function validateArgs(name, args) {
+  if (!args || typeof args !== "object" || Array.isArray(args)) throw new Error("arguments must be an object");
+  const limits = {
+    minitok_knowledge_query: { limit: "number", project: "string" },
+    minitok_knowledge_record: { goal: "string", status: "string" },
+    minitok_compact_context: { text: "string", budget_chars: "number" },
+    minitok_collect_evidence: { project: "string" },
+    minitok_observe: { events: "array" },
+  };
+  const schema = limits[name] || {};
+  for (const [key, type] of Object.entries(schema)) {
+    if (args[key] === undefined) continue;
+    const valid = type === "array" ? Array.isArray(args[key]) : typeof args[key] === type;
+    if (!valid) throw new Error(`${key} must be ${type}`);
+  }
+  if (["minitok_knowledge_record", "minitok_compact_context", "minitok_collect_evidence", "minitok_observe"].includes(name)) {
+    const required = { minitok_knowledge_record: ["goal", "status"], minitok_compact_context: ["text"], minitok_collect_evidence: ["project"], minitok_observe: ["events"] }[name];
+    for (const key of required) if (args[key] === undefined) throw new Error(`${key} is required`);
+  }
+  if (args.limit !== undefined && (!Number.isInteger(args.limit) || args.limit < 0 || args.limit > 1000)) throw new Error("limit must be an integer from 0 to 1000");
+  if (args.budget_chars !== undefined && (!Number.isInteger(args.budget_chars) || args.budget_chars < 100 || args.budget_chars > 1000000)) throw new Error("budget_chars is out of range");
+  if (args.events && args.events.length > 100) throw new Error("events must contain at most 100 items");
+  if (args.project !== undefined && (args.project.length === 0 || args.project.length > 4096)) throw new Error("project is out of range");
+  if (name === "minitok_knowledge_record" && (!args.goal || args.goal.length > 2000)) throw new Error("goal is required and must be at most 2000 characters");
+  if (name === "minitok_knowledge_record" && !["success", "failure", "partial"].includes(args.status)) throw new Error("status is invalid");
+  return args;
+}
+
 async function getToolHandler(name, args, services) {
+  if (!TOOLS.some((tool) => tool.name === name)) throw new Error(`Unknown tool: ${name}`);
+  validateArgs(name, args);
   switch (name) {
     case "minitok_knowledge_query": {
       const r = services.knowledge.query(args);

@@ -3,6 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const { setOwnerOnlyPermissions } = require("../utils/file-permissions");
 
 const CONTRACTS_DIRECTORY = path.join(".minitok", "contracts");
 
@@ -24,9 +25,18 @@ function sanitizeContract(contract) {
 }
 
 function atomicWrite(filePath, value) {
-  const temporary = `${filePath}.tmp.${process.pid}.${Date.now()}`;
-  fs.writeFileSync(temporary, JSON.stringify(value, null, 2), "utf-8");
-  fs.renameSync(temporary, filePath);
+  const temporary = `${filePath}.tmp.${process.pid}.${Date.now()}.${crypto.randomBytes(8).toString("hex")}`;
+  try {
+      fs.writeFileSync(temporary, JSON.stringify(value, null, 2), { encoding: "utf-8", flag: "wx", mode: 0o600 });
+    if (process.platform === "win32") {
+      try { fs.unlinkSync(filePath); } catch (error) { if (error.code !== "ENOENT") throw error; }
+    }
+    fs.renameSync(temporary, filePath);
+    setOwnerOnlyPermissions(filePath);
+  } catch (error) {
+    try { fs.unlinkSync(temporary); } catch {}
+    throw error;
+  }
 }
 
 function writeContract(workspaceRoot, contract) {
@@ -60,7 +70,7 @@ function readJson(filePath) {
     return JSON.parse(fs.readFileSync(filePath, "utf-8"));
   } catch (error) {
     if (error.code === "ENOENT") return null;
-    throw new Error(`Invalid minitok contract state: ${path.basename(filePath)}`);
+    throw new Error(`Invalid minitok contract state: ${path.basename(filePath)}`, { cause: error });
   }
 }
 

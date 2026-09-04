@@ -8,7 +8,6 @@
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
-const { AuthError } = require("../core/errors");
 const { setOwnerOnlyPermissions } = require("../utils/file-permissions");
 
 const TOKENS_DIR = path.join(os.homedir(), ".minitok", "tokens");
@@ -30,7 +29,7 @@ class TokenStore {
 
   /**
    * Load stored token data for a provider.
-   * @returns {{ access_token, refresh_token, expires_at, ... } | null}
+   * @returns {({ access_token?: string, refresh_token?: string, expires_at?: string } & Record<string, unknown>) | null}
    */
   load(provider) {
     const fp = this._filePath(provider);
@@ -53,9 +52,14 @@ class TokenStore {
       ...tokenData,
       saved_at: new Date().toISOString(),
     };
-    const tmp = fp + ".tmp";
-    fs.writeFileSync(tmp, JSON.stringify(record, null, 2), "utf-8", { mode: 0o600 });
-    fs.renameSync(tmp, fp);
+    const tmp = `${fp}.tmp.${process.pid}.${Math.random().toString(16).slice(2)}`;
+    try {
+      fs.writeFileSync(tmp, JSON.stringify(record, null, 2), { encoding: "utf-8", flag: "wx", mode: 0o600 });
+      fs.renameSync(tmp, fp);
+    } catch (error) {
+      try { fs.unlinkSync(tmp); } catch {}
+      throw error;
+    }
     // P3-01: Set owner-only permissions (POSIX + Windows ACL)
     setOwnerOnlyPermissions(fp);
   }
@@ -92,21 +96,22 @@ class TokenStore {
    */
   list() {
     this._ensureDir();
-    try {
-      return fs.readdirSync(this._dir)
-        .filter((f) => f.endsWith(".json"))
-        .map((f) => {
+    return fs.readdirSync(this._dir)
+      .filter((f) => f.endsWith(".json"))
+      .flatMap((f) => {
+        try {
           const data = JSON.parse(fs.readFileSync(path.join(this._dir, f), "utf-8"));
-          return {
+          if (!data || typeof data !== "object" || Array.isArray(data)) return [];
+          return [{
             provider: data.provider || f.replace(".json", ""),
             has_refresh: Boolean(data.refresh_token),
             expires_at: data.expires_at || null,
-            valid: data.expires_at ? Date.now() < new Date(data.expires_at).getTime() - 60000 : true,
-          };
-        });
-    } catch {
-      return [];
-    }
+            valid: data.expires_at ? Date.now() < new Date(data.expires_at).getTime() - 60000 : Boolean(data.access_token),
+          }];
+        } catch {
+          return [];
+        }
+      });
   }
 }
 

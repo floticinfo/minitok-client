@@ -19,11 +19,11 @@ describe("customer token storage", () => {
   });
 
   it("prefers the explicit environment token", () => {
-    const previous = process.env.MINITOK_CUSTOMER_TOKEN;
-    process.env.MINITOK_CUSTOMER_TOKEN = "env-jwt";
+    const previous = process.env.minitok_customer_token;
+    process.env.minitok_customer_token = "env-jwt";
     try { assert.equal(loadCustomerToken("missing.json"), "env-jwt"); } finally {
-      if (previous === undefined) delete process.env.MINITOK_CUSTOMER_TOKEN;
-      else process.env.MINITOK_CUSTOMER_TOKEN = previous;
+      if (previous === undefined) delete process.env.minitok_customer_token;
+      else process.env.minitok_customer_token = previous;
     }
   });
 });

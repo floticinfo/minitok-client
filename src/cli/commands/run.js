@@ -1,7 +1,6 @@
 "use strict";
 
 const { WorkspaceManager } = require("../../workspace/manager");
-const { loadConfig } = require("../../config/loader");
 const { runPipeline } = require("../../pipeline/loop");
 const path = require("path");
 
@@ -41,15 +40,17 @@ async function cmdRun(task, opts) {
     // Save results — best-effort, never block pipeline on write errors
     try {
       const fs = require("fs");
+      const { redact } = require("../../run-evidence");
       const evidenceDir = path.join(repoRoot, ".minitok");
       fs.mkdirSync(evidenceDir, { recursive: true });
-      fs.writeFileSync(
-        path.join(evidenceDir, "last-run.json"),
-        JSON.stringify({ task, timestamp: new Date().toISOString(), ...result }, null, 2),
-        "utf-8"
-      );
+      const lastRunPath = path.join(evidenceDir, "last-run.json");
+      const tmpPath = `${lastRunPath}.tmp.${process.pid}`;
+      // Redact the same way run evidence is sanitized — plans/review LLM
+      // output may contain whatever the user pasted into the task.
+      fs.writeFileSync(tmpPath, JSON.stringify(redact({ task, timestamp: new Date().toISOString(), ...result }), null, 2), "utf-8");
+      fs.renameSync(tmpPath, lastRunPath);
     } catch (writeErr) {
-      console.warn(`⚠️  Could not save last-run.json: ${writeErr.message}`);
+      console.warn(`[warn] Could not save last-run.json: ${writeErr.message}`);
     }
 
     // Check actual pipeline outcome — success requires at least one APPROVE

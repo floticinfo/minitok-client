@@ -28,8 +28,7 @@ Output format (strict JSON):
     {
       "file": "path/to/file",
       "action": "create|modify|delete",
-      "content": "full file content for create, or diff description for modify",
-      "line_range": "optional: start-end for modifications"
+      "content": "full file content for create or modify"
     }
   ],
   "summary": "what was implemented",
@@ -41,7 +40,9 @@ async function implement(provider, planResult, repoContext, options = {}) {
     { role: "system", content: IMPLEMENT_SYSTEM_PROMPT },
     {
       role: "user",
-      content: `## Plan\n${JSON.stringify(planResult.plan, null, 2)}\n\n## Repository Context\n${repoContext}\n\n## Instructions\n- Produce complete, working code\n- Follow existing code style\n- Include imports and dependencies`,
+      content: `## Plan\n${JSON.stringify(planResult.plan, null, 2)}\n\n## Repository Context\n${repoContext}\n\n## Instructions\n- Produce complete, working code\n- Follow existing code style\n- Include imports and dependencies
+- For modify, content must be the complete replacement file contents
+- Do not include line_range or unified diff syntax`,
     },
   ];
 
@@ -68,35 +69,37 @@ async function implement(provider, planResult, repoContext, options = {}) {
 /**
  * Resolve and validate a file path stays within repoRoot.
  * Checks both lexical path and symlink/junction target.
- * @param {string} repoRoot
- * @param {string} filePath - relative path from LLM
- * @returns {{ resolved: string, safe: boolean, reason?: string }}
+ * @param {string} child - resolved child path
+ * @param {string} parent - resolved parent path
+ * @returns {boolean}
  */
+function isWithinLexical(child, parent) {
+  return child === parent || child.startsWith(parent + path.sep);
+}
+
 function safePath(repoRoot, filePath) {
   const resolved = path.resolve(repoRoot, filePath);
-  const root = path.resolve(repoRoot);
-
-  // Lexical check: resolved path must be under repoRoot
-  if (!(resolved === root || resolved.startsWith(root + path.sep))) {
+  let root;
+  try { root = fs.realpathSync.native(path.resolve(repoRoot)); } catch (error) { return { resolved, safe: false, reason: `Path check failed: ${repoRoot}: ${error.message}` }; }
+  if (!isWithinLexical(resolved, path.resolve(repoRoot))) {
     return { resolved, safe: false, reason: `Path traversal blocked: ${filePath} resolves outside repo` };
   }
-
-  // Symlink/junction check: follow symlinks and verify target is also inside repoRoot
-  try {
-    const stat = fs.lstatSync(resolved);
-    if (stat.isSymbolicLink()) {
-      const realTarget = fs.realpathSync(resolved);
-      if (!(realTarget === root || realTarget.startsWith(root + path.sep))) {
-        return { resolved, safe: false, reason: `Symlink escape blocked: ${filePath} -> ${realTarget}` };
-      }
+  const lexicalRoot = path.resolve(repoRoot);
+  let current = resolved;
+  while (true) {
+    try {
+      const stat = fs.lstatSync(current);
+      const real = fs.realpathSync.native(current);
+      if (!(real === root || real.startsWith(root + path.sep))) return { resolved, safe: false, reason: `Symlink or junction escape blocked: ${filePath}` };
+      if (stat.isSymbolicLink()) return { resolved, safe: false, reason: `Symlink path blocked: ${filePath}` };
+    } catch (error) {
+      if (error.code !== "ENOENT") return { resolved, safe: false, reason: `Path check failed: ${filePath}: ${error.message}` };
     }
-  } catch (e) {
-    // ENOENT: file doesn't exist yet — this is fine for create actions
-    if (e.code !== "ENOENT") {
-      return { resolved, safe: false, reason: `Path check failed: ${filePath}: ${e.message}` };
-    }
+    if (current === lexicalRoot) break;
+    const parent = path.dirname(current);
+    if (parent === current || !isWithinLexical(parent, lexicalRoot)) return { resolved, safe: false, reason: `Path traversal blocked: ${filePath}` };
+    current = parent;
   }
-
   return { resolved, safe: true };
 }
 
@@ -145,12 +148,20 @@ function applyChanges(repoRoot, changesResult, dryRun = false, options = {}) {
     return { applied: 0, errors: validationErrors };
   }
 
-  const results = { applied: 0, skipped: 0, errors: [] };
+  const results = { applied: 0, skipped: 0, errors: [], audit: { persisted: true, warnings: [] } };
+  const recordAudit = (entry) => {
+    const result = auditLog(entry, options.auditPath);
+    if (result && result.persisted === false) {
+      results.audit.persisted = false;
+      results.audit.warnings.push(result.warning);
+    }
+    return result;
+  };
   for (const change of validatedChanges) {
     // 🔒 Validate path stays within repoRoot
     const { resolved: filePath, safe, reason } = safePath(repoRoot, change.file);
     if (!safe) {
-      auditLog({ action: change.action, file: change.file, result: "rejected", reason }, options.auditPath);
+      recordAudit({ action: change.action, file: change.file, result: "rejected", reason });
       results.errors.push(reason);
       continue;
     }
@@ -158,7 +169,7 @@ function applyChanges(repoRoot, changesResult, dryRun = false, options = {}) {
     // 🔒 Check protected paths
     const { protected: isProtected, reason: protReason } = isProtectedPath(repoRoot, filePath);
     if (isProtected) {
-      auditLog({ action: change.action, file: change.file, result: "rejected", reason: protReason }, options.auditPath);
+      recordAudit({ action: change.action, file: change.file, result: "rejected", reason: protReason });
       results.errors.push(protReason);
       continue;
     }
@@ -167,7 +178,7 @@ function applyChanges(repoRoot, changesResult, dryRun = false, options = {}) {
     const blockedExtensions = options.blockedExtensions || DEFAULT_BLOCKED_EXTENSIONS;
     const { blocked, reason: extReason } = isBlockedExtension(filePath, blockedExtensions);
     if (blocked) {
-      auditLog({ action: change.action, file: change.file, result: "rejected", reason: extReason }, options.auditPath);
+      recordAudit({ action: change.action, file: change.file, result: "rejected", reason: extReason });
       results.errors.push(extReason);
       continue;
     }
@@ -179,25 +190,30 @@ function applyChanges(repoRoot, changesResult, dryRun = false, options = {}) {
       }
       if (change.action === "create") {
         fs.mkdirSync(path.dirname(filePath), { recursive: true });
-        fs.writeFileSync(filePath, change.content, "utf-8");
-        auditLog({ action: "create", file: change.file, result: "applied" }, options.auditPath);
+        const temporary = `${filePath}.tmp.${process.pid}.${Math.random().toString(16).slice(2)}`;
+        fs.writeFileSync(temporary, change.content, { encoding: "utf-8", flag: "wx" });
+        try { fs.renameSync(temporary, filePath); } catch (error) { try { fs.unlinkSync(temporary); } catch {} throw error; }
+        recordAudit({ action: "create", file: change.file, result: "applied" });
         results.applied++;
       } else if (change.action === "modify") {
-        if (fs.existsSync(filePath)) {
-          if (change.content) {
-            fs.writeFileSync(filePath, change.content, "utf-8");
-          }
-          auditLog({ action: "modify", file: change.file, result: "applied" }, options.auditPath);
-          results.applied++;
-        } else {
+        if (!fs.existsSync(filePath)) {
           results.errors.push(`File not found: ${change.file}`);
+          continue;
         }
+        const current = fs.lstatSync(filePath);
+        if (current.isSymbolicLink() || !current.isFile()) throw new Error("Modify target must be a regular file");
+        const temporary = `${filePath}.tmp.${process.pid}.${Math.random().toString(16).slice(2)}`;
+        fs.writeFileSync(temporary, change.content, { encoding: "utf-8", flag: "wx" });
+        try { fs.renameSync(temporary, filePath); } catch (error) { try { fs.unlinkSync(temporary); } catch {} throw error; }
+        recordAudit({ action: "modify", file: change.file, result: "applied" });
+        results.applied++;
       } else if (change.action === "delete") {
-        if (fs.existsSync(filePath)) {
-          fs.unlinkSync(filePath);
-          auditLog({ action: "delete", file: change.file, result: "applied" }, options.auditPath);
-          results.applied++;
-        }
+        if (!fs.existsSync(filePath)) continue;
+        const current = fs.lstatSync(filePath);
+        if (current.isSymbolicLink() || !current.isFile()) throw new Error("Delete target must be a regular file");
+        fs.unlinkSync(filePath);
+        recordAudit({ action: "delete", file: change.file, result: "applied" });
+        results.applied++;
       } else {
         results.skipped++;
       }
@@ -223,6 +239,9 @@ function validateChange(change) {
   const validActions = ["create", "modify", "delete"];
   if (!validActions.includes(change.action)) {
     return { valid: false, reason: `Change 'action' must be one of: ${validActions.join(", ")}` };
+  }
+  if (Object.prototype.hasOwnProperty.call(change, "line_range")) {
+    return { valid: false, reason: "Change 'line_range' is not supported; provide complete file content" };
   }
   if (change.action !== "delete") {
     if (change.content === undefined || change.content === null) {

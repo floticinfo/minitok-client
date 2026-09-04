@@ -11,8 +11,12 @@
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
+const { randomUUID } = require("crypto");
+const { setOwnerOnlyPermissions } = require("../utils/file-permissions");
 
 const MAX_OUTCOMES = 100; // rolling window
+const LOCK_TIMEOUT_MS = 30000;
+const LOCK_STALE_MS = 120000;
 const DEFAULT_PATH = path.join(os.homedir(), ".minitok", "evolution", "outcomes.json");
 
 class KnowledgeStore {
@@ -31,20 +35,71 @@ class KnowledgeStore {
     }
   }
 
+  _acquireLock() {
+    const lock = this._file + ".lock";
+    const started = Date.now();
+    fs.mkdirSync(path.dirname(this._file), { recursive: true });
+    while (Date.now() - started < LOCK_TIMEOUT_MS) {
+      try {
+        const token = randomUUID();
+        const fd = fs.openSync(lock, "wx", 0o600);
+        fs.writeSync(fd, JSON.stringify({ pid: process.pid, host: os.hostname(), token, created_at: Date.now(), heartbeat_at: Date.now() }), 0, "utf8");
+        const heartbeat = setInterval(() => {
+          try {
+            const owner = JSON.parse(fs.readFileSync(lock, "utf8"));
+            if (owner.pid === process.pid && owner.host === os.hostname() && owner.token === token) {
+              fs.ftruncateSync(fd, 0);
+              fs.writeSync(fd, JSON.stringify({ ...owner, heartbeat_at: Date.now() }), 0, "utf8");
+              fs.futimesSync(fd, new Date(), new Date());
+            }
+          } catch {}
+        }, Math.max(1000, Math.floor(LOCK_STALE_MS / 3)));
+        heartbeat.unref();
+        return { fd, lock, token, heartbeat };
+      } catch (error) {
+        if (error.code !== "EEXIST") throw error;
+        try {
+          const current = JSON.parse(fs.readFileSync(lock, "utf8"));
+          let alive = false;
+          if (current.host === os.hostname() && Number.isInteger(current.pid)) {
+            try { process.kill(current.pid, 0); alive = true; } catch {}
+          }
+          const stat = fs.statSync(lock);
+          const heartbeatAt = Number(current.heartbeat_at || current.created_at || stat.mtimeMs);
+          if (!alive && Number.isFinite(heartbeatAt) && Date.now() - heartbeatAt > LOCK_STALE_MS) {
+            const observedToken = current.token;
+            const latest = JSON.parse(fs.readFileSync(lock, "utf8"));
+            if (latest.token === observedToken) fs.unlinkSync(lock);
+          }
+        } catch (staleError) {
+          if (staleError.code !== "ENOENT") throw staleError;
+        }
+      }
+    }
+    throw new Error("KnowledgeStore lock acquisition timed out");
+  }
+
+  _releaseLock(lockState) {
+    clearInterval(lockState.heartbeat);
+    try { fs.closeSync(lockState.fd); } catch {}
+    try {
+      const owner = JSON.parse(fs.readFileSync(lockState.lock, "utf8"));
+      if (owner.pid === process.pid && owner.host === os.hostname() && owner.token === lockState.token) fs.unlinkSync(lockState.lock);
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+  }
+
   _save() {
     const dir = path.dirname(this._file);
     fs.mkdirSync(dir, { recursive: true });
-    // Rolling window
-    if (this._outcomes.length > MAX_OUTCOMES) {
-      this._outcomes = this._outcomes.slice(-MAX_OUTCOMES);
-    }
+    if (this._outcomes.length > MAX_OUTCOMES) this._outcomes = this._outcomes.slice(-MAX_OUTCOMES);
     const tmp = this._file + ".tmp." + process.pid + "." + Date.now();
     try {
-      fs.writeFileSync(tmp, JSON.stringify(this._outcomes, null, 2), "utf-8");
-      // Atomic rename — on Windows this overwrites the target
+      fs.writeFileSync(tmp, JSON.stringify(this._outcomes, null, 2), { encoding: "utf-8", mode: 0o600 });
       fs.renameSync(tmp, this._file);
+      setOwnerOnlyPermissions(this._file);
     } catch (e) {
-      // Clean up temp file on failure
       try { fs.unlinkSync(tmp); } catch {}
       throw e;
     }
@@ -68,18 +123,25 @@ class KnowledgeStore {
       timestamp: new Date().toISOString(),
       ...outcome,
     };
-    // Re-read from disk before save to preserve concurrent writes
-    this._outcomes = this._load();
-    this._outcomes.push(record);
-    this._save();
+    const lockState = this._acquireLock();
+    try {
+      this._outcomes = this._load();
+      this._outcomes.push(record);
+      this._save();
+    } finally {
+      this._releaseLock(lockState);
+    }
     return record;
   }
 
   /** Get all recorded outcomes. */
-  getAll() { return [...this._outcomes]; }
+  getAll(project) {
+    const outcomes = [...this._outcomes];
+    return project ? outcomes.filter(outcome => outcome.project === project) : outcomes;
+  }
 
   /** Get the last N outcomes. */
-  recent(n = 10) { return this._outcomes.slice(-n); }
+  recent(n = 10, project) { return this.getAll(project).slice(-n); }
 
   /** Count outcomes with a given status. */
   countByStatus(status) { return this._outcomes.filter(o => o.status === status).length; }

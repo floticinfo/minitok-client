@@ -18,7 +18,7 @@ const DEFAULT_CONTEXT_BUDGET_CHARS = 40_000; // ~10k tokens
  * @param {number} [opts.min_head_ratio=0.6]
  * @returns {{ text: string, original_chars: number, final_chars: number, compacted: boolean }}
  */
-function compactText(text, opts = {}) {
+function compactText(text, opts = /** @type {{ budget_chars: number, min_head_ratio?: number }} */ ({ budget_chars: DEFAULT_CONTEXT_BUDGET_CHARS })) {
   const budget = opts.budget_chars || DEFAULT_CONTEXT_BUDGET_CHARS;
   const minHeadRatio = opts.min_head_ratio || 0.6;
 
@@ -63,8 +63,8 @@ function compactText(text, opts = {}) {
  * @returns {{ sections: Record<string, string>, stats: Record<string, { original: number, final: number, compacted: boolean }> }}
  */
 function compactSections(sections, budgetPerSection = DEFAULT_CONTEXT_BUDGET_CHARS) {
-  const result = {};
-  const stats = {};
+  const result = /** @type {Record<string, string>} */ ({});
+  const stats = /** @type {Record<string, { original: number, final: number, compacted: boolean }>} */ ({});
   for (const [key, value] of Object.entries(sections)) {
     const c = compactText(value, { budget_chars: budgetPerSection });
     result[key] = c.text;

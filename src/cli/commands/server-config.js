@@ -5,7 +5,7 @@
  *
  * Precedence:
  *   1. CLI --server flag (highest)
- *   2. minitok_SERVER_URL env var
+ *   2. minitok_server_url env var
  *   3. ~/.minitok/config.json (persistent)
  *   4. Default: https://api.minitok.dev
  */
@@ -49,18 +49,19 @@ function _saveLocalConfig(patch) {
  */
 function resolveServerUrl(options = {}) {
   // 1. CLI flag
-  if (options.cliServer && typeof options.cliServer === "string") {
+  if (options.cliServer !== undefined && options.cliServer !== null) {
     return _normalizeUrl(options.cliServer);
   }
 
   // 2. Environment variable
-  if (process.env.minitok_SERVER_URL) {
-    return _normalizeUrl(process.env.minitok_SERVER_URL);
+  const serverUrl = process.env.minitok_server_url;
+  if (serverUrl) {
+    return _normalizeUrl(serverUrl);
   }
 
   // 3. Persistent config
   const config = _loadLocalConfig();
-  if (config.server_url) {
+  if (Object.prototype.hasOwnProperty.call(config, "server_url")) {
     return _normalizeUrl(config.server_url);
   }
 
@@ -79,15 +80,21 @@ function saveServerUrl(url) {
  * Normalize URL: trim, remove trailing slash, validate.
  */
 function _normalizeUrl(raw) {
-  if (!raw || typeof raw !== "string") return DEFAULT_SERVER_URL;
-  let url = raw.trim().replace(/\/+$/, "");
+  if (typeof raw !== "string" || !raw.trim()) throw new Error("Server URL must be a non-empty string");
+  const value = raw.trim().replace(/\/+$/, "");
+  let parsed;
   try {
-    const parsed = new URL(url);
-    if (!["http:", "https:"].includes(parsed.protocol)) return DEFAULT_SERVER_URL;
-    return parsed.origin + parsed.pathname.replace(/\/+$/, "");
+    parsed = new URL(value);
   } catch {
-    return DEFAULT_SERVER_URL;
+    throw new Error("Server URL is invalid");
   }
+  if (!["http:", "https:"].includes(parsed.protocol)) throw new Error("Server URL must use http or https");
+  if (parsed.username || parsed.password) throw new Error("Server URL must not contain credentials");
+  if (parsed.hash) throw new Error("Server URL must not contain a fragment");
+  if (parsed.protocol === "http:" && !["localhost", "127.0.0.1", "::1"].includes(parsed.hostname.toLowerCase())) {
+    throw new Error("Remote http server URLs are not allowed");
+  }
+  return parsed.origin + parsed.pathname.replace(/\/+$/, "");
 }
 
 module.exports = { resolveServerUrl, saveServerUrl, DEFAULT_SERVER_URL };

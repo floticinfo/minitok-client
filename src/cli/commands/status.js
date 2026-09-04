@@ -3,26 +3,26 @@
 const { WorkspaceManager } = require("../../workspace/manager");
 const { loadConfig, resolveProviderName } = require("../../config/loader");
 const { detectAvailableProviders } = require("../../llm/provider");
-const { minitok_VERSION } = require("../../core/version");
+const { minitokVersion } = require("../../core/version");
 const git = require("../../git/operations");
-const fs = require("fs");
 const path = require("path");
-const { checkEntitlement, GateState } = require("../../entitlement/gate");
+const { authorizeEntitlement } = require("../../entitlement/policy");
 const { resolveServerUrl } = require("./server-config");
 const { EvolutionOptIn } = require("../../evolution/optin");
 
 async function cmdStatus() {
-  console.log(`minitok ${minitok_VERSION}\n`);
+  console.log(`minitok ${minitokVersion}\n`);
 
   // --- Entitlement section ---
   try {
-    const gate = checkEntitlement();
+    const gate = await authorizeEntitlement();
     console.log(`Entitlement: ${gate.state}`);
-    if (gate.entitlement) {
-      const p = gate.entitlement.payload || {};
-      if (p.plan_id) console.log(`  Plan:       ${p.plan_id}`);
-      if (p.expires_at) console.log(`  Expires:    ${p.expires_at}`);
-      if (p.max_devices) console.log(`  Max Devices: ${p.max_devices}`);
+    // checkEntitlement returns the verified payload directly on gate.entitlement.
+    const payload = gate.entitlement && gate.entitlement.payload ? gate.entitlement.payload : gate.entitlement;
+    if (payload) {
+      if (payload.plan_id) console.log(`  Plan:       ${payload.plan_id}`);
+      if (payload.expires_at) console.log(`  Expires:    ${payload.expires_at}`);
+      if (payload.max_devices) console.log(`  Max Devices: ${payload.max_devices}`);
     }
     if (gate.graceDaysRemaining) {
       console.log(`  Grace:      ${gate.graceDaysRemaining} day(s) remaining`);
@@ -80,7 +80,7 @@ async function cmdStatus() {
   const providers = await detectAvailableProviders(config);
   console.log(`\nProviders: ${providers.length > 0 ? providers.join(", ") : "none detected"}`);
   console.log(`Roles:`);
-  for (const [role, cfg] of Object.entries(config.roles)) {
+  for (const [role] of Object.entries(config.roles)) {
     console.log(`  ${role.padEnd(8)} → ${resolveProviderName(config, role) || "unset"}`);
   }
 

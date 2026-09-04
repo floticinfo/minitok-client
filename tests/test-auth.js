@@ -1,6 +1,7 @@
 'use strict';
 const { describe, it, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
+const { AuthError } = require('../src/core/errors');
 const fs2 = require('fs');
 const path = require('path');
 const os = require('os');
@@ -39,10 +40,15 @@ describe('AuthManager', () => {
   it('env var ref', async () => { process.env.MY_KEY = 'sk-fe'; const r = await mgr.resolve('x', { auth: { type: 'api_key', key: '${MY_KEY}' } }); assert.equal(r.headers['x-api-key'], 'sk-fe'); delete process.env.MY_KEY; });
 });
 
-describe('IAMResolver', () => {
-  it('throws without creds', async () => { const { IAMResolver } = require('../src/auth/iam'); await assert.rejects(() => new IAMResolver().resolve({})); });
-  it('uses explicit creds', async () => { const { IAMResolver } = require('../src/auth/iam'); const r = await new IAMResolver().resolve({ access_key_id: 'AKIATEST', secret_access_key: 'SECRET' }); assert.ok(r.headers['x-amz-date']); });
-  it('session token', async () => { const { IAMResolver } = require('../src/auth/iam'); const r = await new IAMResolver().resolve({ access_key_id: 'A', secret_access_key: 'S', session_token: 'FwoG' }); assert.equal(r.headers['x-amz-security-token'], 'FwoG'); });
+describe('IAM auth type', () => {
+  it('rejects with a clear unsupported error and workaround', async () => {
+    const { AuthError } = require('../src/core/errors');
+    const { authManager } = require('../src/auth');
+    await assert.rejects(
+      () => authManager.resolve('custom', { auth: { type: 'iam', access_key_id: 'A', secret_access_key: 'S' } }),
+      (e) => e instanceof AuthError && /SigV4.*not supported/.test(e.message) && /proxy/.test(e.message)
+    );
+  });
 });
 
 describe('ServiceAccountResolver', () => {
@@ -54,6 +60,18 @@ describe('ServiceAccountResolver', () => {
     fs2.writeFileSync(fp, JSON.stringify({ type: 'bad' }));
     await assert.rejects(() => new ServiceAccountResolver().resolve({ key_file: fp }), /Unsupported/);
     fs2.rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('bounds OAuth error bodies', async () => {
+    const { ServiceAccountResolver } = require('../src/auth/service-account');
+    const originalFetch = global.fetch;
+    global.fetch = async () => ({ ok: false, status: 400, text: async () => 'x'.repeat(5000) });
+    try {
+      await assert.rejects(
+        () => new ServiceAccountResolver()._refreshAuthorizedUser({ refresh_token: 'r', client_id: 'c', client_secret: 's' }),
+        (e) => e instanceof AuthError && e.message.length < 600
+      );
+    } finally { global.fetch = originalFetch; }
   });
 });
 

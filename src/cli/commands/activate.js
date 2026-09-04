@@ -83,7 +83,7 @@ async function cmdActivate(key, opts) {
       saved_at: new Date().toISOString(),
     };
     const tmp = tokenFile + ".tmp";
-    fs.writeFileSync(tmp, JSON.stringify(record, null, 2), "utf-8", { mode: 0o600 });
+    fs.writeFileSync(tmp, JSON.stringify(record, null, 2), { encoding: "utf-8", mode: 0o600 });
     fs.renameSync(tmp, tokenFile);
     try { fs.chmodSync(tokenFile, 0o600); } catch {}
   } catch (err) {
@@ -102,7 +102,7 @@ async function cmdActivate(key, opts) {
 
   // 7. Display success
   const payload = entitlement.payload || {};
-  console.log("\nActivation successful.\n");
+  console.log("\n[ok] Activation successful.\n");
   console.log(`  Plan:       ${payload.plan_id || "unknown"}`);
   console.log(`  Expires:    ${payload.expires_at || "unknown"}`);
   console.log(`  Installation: ${installationId}`);
@@ -114,7 +114,7 @@ async function cmdActivate(key, opts) {
 
 /**
  * Minimal HTTP POST helper (no external dependencies).
- * @returns {{ ok: boolean, status: number, statusText: string, body: object|null }}
+ * @returns {Promise<{ ok: boolean, status: number, statusText: string, body: object|null }>}
  */
 function _httpPost(urlString, body) {
   return new Promise((resolve, reject) => {

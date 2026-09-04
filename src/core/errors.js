@@ -42,6 +42,16 @@ class AdapterError extends minitokError {
   }
 }
 
+class GitError extends minitokError {
+  constructor(message, options = {}) {
+    super(message);
+    this.name = "GitError";
+    this.code = options.code;
+    this.command = options.command;
+    this.status = options.status;
+  }
+}
+
 class MigrationError extends minitokError {
   constructor(message) {
     super(message);
@@ -56,5 +66,6 @@ module.exports = {
   ConfigError,
   PipelineError,
   AdapterError,
+  GitError,
   MigrationError,
 };

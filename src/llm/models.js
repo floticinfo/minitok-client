@@ -1,5 +1,7 @@
 "use strict";
 
+const { authManager } = require("../auth");
+
 /**
  * Model registry — curated catalog + live API discovery.
  *
@@ -67,11 +69,39 @@ function findModel(modelId) {
   return CATALOG.find(m => m.id === modelId);
 }
 
+/**
+ * Catalog models for a given provider that belong to a target tier.
+ * Deprecated models are never returned as escalation targets.
+ * @param {string} providerName - canonical provider (anthropic/openai/google/openrouter)
+ * @param {string} tier
+ * @returns {Array}
+ */
+function findModelsByTier(providerName, tier) {
+  const p = (providerName || "").toLowerCase();
+  return listModels(p).filter(m => m.tier === tier && m.tier !== "deprecated");
+}
+
+/**
+ * Best (highest max_output) escalation model for a provider + tier, or null.
+ * Used by the EscalationEngine to pick a higher-power model on the same provider.
+ * @param {string} providerName
+ * @param {string} targetTier
+ * @returns {{ id: string } | null}
+ */
+function findEscalationModel(providerName, targetTier) {
+  const matches = findModelsByTier(providerName, targetTier);
+  if (matches.length === 0) return null;
+  return matches.reduce((best, m) => (m.max_output > best.max_output ? m : best));
+}
+
 /** Fetch model IDs from OpenAI-compatible /v1/models */
-async function fetchOpenAIModels(baseUrl, apiKey) {
+async function fetchOpenAIModels(baseUrl, apiKey, auth, providerName = "openai") {
   const { fetchWithTimeout } = require("./provider");
   try {
-    const res = await fetchWithTimeout(`${baseUrl}/v1/models`, { headers: { Authorization: `Bearer ${apiKey}` } }, 10000);
+    const resolved = await authManager.resolve(providerName, { api_key: apiKey, ...(auth ? { auth } : {}) });
+    const headers = { ...(resolved.headers || {}) };
+    if (resolved.token && !Object.keys(headers).some(header => header.toLowerCase() === "authorization")) headers.Authorization = `Bearer ${resolved.token}`;
+    const res = await fetchWithTimeout(`${baseUrl}/v1/models`, { headers }, 10000);
     if (!res.ok) return [];
     const data = await res.json();
     return (data.data || []).map(m => m.id).sort();
@@ -79,10 +109,13 @@ async function fetchOpenAIModels(baseUrl, apiKey) {
 }
 
 /** Fetch model IDs from Google /v1beta/models */
-async function fetchGoogleModels(baseUrl, apiKey) {
+async function fetchGoogleModels(baseUrl, apiKey, auth, providerName = "google") {
   const { fetchWithTimeout } = require("./provider");
   try {
-    const res = await fetchWithTimeout(`${baseUrl}/v1beta/models?key=${apiKey}`, {}, 10000);
+    const resolved = await authManager.resolve(providerName, { api_key: apiKey, ...(auth ? { auth } : {}) });
+    const headers = { ...(resolved.headers || {}) };
+    if (resolved.token && !Object.keys(headers).some(header => header.toLowerCase() === "x-goog-api-key" || header.toLowerCase() === "authorization")) headers["x-goog-api-key"] = resolved.token;
+    const res = await fetchWithTimeout(`${baseUrl}/v1beta/models`, { headers }, 10000);
     if (!res.ok) return [];
     const data = await res.json();
     return (data.models || []).map(m => m.name?.replace("models/", "")).filter(Boolean).sort();
@@ -93,18 +126,21 @@ async function fetchGoogleModels(baseUrl, apiKey) {
 async function discoverModels(providers) {
   const result = { catalog: [...CATALOG], live: {}, unknown: [], custom: [] };
 
-  if (providers.openai?.api_key) {
-    const base = providers.openai.endpoint || "https://api.openai.com";
-    const liveIds = await fetchOpenAIModels(base, providers.openai.api_key);
+  if (await authManager.isAvailable("openai", providers.openai || {})) {
+    const cfg = providers.openai || {};
+    const base = cfg.endpoint || "https://api.openai.com";
+    const liveIds = await fetchOpenAIModels(base, cfg.api_key, cfg.auth);
     result.live.openai = liveIds;
     const catIds = new Set(CATALOG.filter(m => m.provider === "openai").map(m => m.id));
     result.unknown.push(...liveIds.filter(id => !catIds.has(id)));
   }
 
-  if (providers.google?.api_key || providers.gemini?.api_key) {
-    const cfg = providers.google || providers.gemini;
+  const googleProvider = providers.google || providers.gemini || {};
+  const googleName = providers.google ? "google" : "gemini";
+  if (await authManager.isAvailable(googleName, googleProvider)) {
+    const cfg = googleProvider;
     const base = cfg.endpoint || "https://generativelanguage.googleapis.com";
-    const liveIds = await fetchGoogleModels(base, cfg.api_key);
+    const liveIds = await fetchGoogleModels(base, cfg.api_key, cfg.auth, googleName);
     result.live.google = liveIds;
     const catIds = new Set(CATALOG.filter(m => m.provider === "google").map(m => m.id));
     result.unknown.push(...liveIds.filter(id => !catIds.has(id)));
@@ -114,10 +150,11 @@ async function discoverModels(providers) {
   result.live.anthropic = CATALOG.filter(m => m.provider === "anthropic").map(m => m.id);
 
   // Tier 2: OpenRouter live discovery
-  if (providers.openrouter?.api_key) {
+  const openrouter = providers.openrouter || {};
+  if (await authManager.isAvailable("openrouter", openrouter)) {
     try {
       const { OpenRouterProvider } = require("./provider");
-      const liveModels = await OpenRouterProvider.fetchModels(providers.openrouter.api_key);
+      const liveModels = await OpenRouterProvider.fetchModels(openrouter.api_key, openrouter.auth);
       result.live.openrouter = liveModels;
       result.openrouter_count = liveModels.length;
     } catch { result.live.openrouter = []; }
@@ -136,7 +173,7 @@ async function discoverModels(providers) {
       // Live discovery from endpoint
       try {
         const { CustomProvider } = require("./provider");
-        const live = await CustomProvider.fetchModels(cfg.base_url, cfg.api_key);
+        const live = await CustomProvider.fetchModels(cfg.base_url, cfg.api_key, cfg.auth, name);
         for (const l of live) {
           if (!customModels.find(m => m.id === l.id)) customModels.push(l);
         }
@@ -170,4 +207,4 @@ function formatModel(m) {
   return `  ${m.id.padEnd(32)} ${m.display.padEnd(24)} [${ctx} in, ${out} out]${reasoning}`;
 }
 
-module.exports = { CATALOG, listModels, findModel, fetchOpenAIModels, fetchGoogleModels, discoverModels, formatModel };
+module.exports = { CATALOG, listModels, findModel, findModelsByTier, findEscalationModel, fetchOpenAIModels, fetchGoogleModels, discoverModels, formatModel };

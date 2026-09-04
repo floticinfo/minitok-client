@@ -55,17 +55,28 @@ describe("Regression: cmdModels does not crash", () => {
 
 describe("Regression: doctor success message reflects actual check results", () => {
   it("cmdDoctor returns exit code 1 when no providers are configured", async () => {
-    const originalEnv = process.env.ANTHROPIC_API_KEY;
-    delete process.env.ANTHROPIC_API_KEY;
-    delete process.env.OPENAI_API_KEY;
-    delete process.env.GOOGLE_API_KEY;
+    const originalEnv = {
+      ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+      OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+      GOOGLE_API_KEY: process.env.GOOGLE_API_KEY,
+      OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
+      CAMEL_STREAM_API_KEY: process.env.CAMEL_STREAM_API_KEY,
+    };
+    for (const name of Object.keys(originalEnv)) delete process.env[name];
+    const originalHome = process.env.USERPROFILE;
+    const isolatedHome = require("fs").mkdtempSync(require("path").join(require("os").tmpdir(), "minitok-doctor-"));
+    process.env.USERPROFILE = isolatedHome;
     try {
       const { cmdDoctor } = require("../src/cli/commands/doctor");
       const exitCode = await cmdDoctor();
       // With no providers configured, exit code must be 1 (failure)
       assert.equal(exitCode, 1, "exit code must be 1 when no providers are configured");
     } finally {
-      if (originalEnv !== undefined) process.env.ANTHROPIC_API_KEY = originalEnv;
+      for (const [name, value] of Object.entries(originalEnv)) {
+        if (value !== undefined) process.env[name] = value;
+      }
+      if (originalHome !== undefined) process.env.USERPROFILE = originalHome;
+      else delete process.env.USERPROFILE;
     }
   });
 
@@ -75,19 +86,18 @@ describe("Regression: doctor success message reflects actual check results", () 
       require("path").join(__dirname, "..", "src", "cli", "commands", "doctor.js"),
       "utf-8"
     );
-    // Verify provider checks are accumulated into allOk
+    // Per-provider checks are informational; the gate on allOk is "at least
+    // one provider configured" so single-provider customers don't false-fail.
     assert.ok(
-      doctorSrc.includes('allOk = check("Anthropic"'),
-      "Anthropic check must be accumulated into allOk"
+      doctorSrc.includes('allOk = check("LLM provider configured"'),
+      "the at-least-one-provider check must be accumulated into allOk"
     );
-    assert.ok(
-      doctorSrc.includes('allOk = check("OpenAI"'),
-      "OpenAI check must be accumulated into allOk"
-    );
-    assert.ok(
-      doctorSrc.includes('allOk = check("Google"'),
-      "Google check must be accumulated into allOk"
-    );
+    for (const provider of ["Anthropic", "OpenAI", "Google", "OpenRouter"]) {
+      assert.ok(
+        doctorSrc.includes(`["${provider}",`),
+        `${provider} check must be present (informational)`
+      );
+    }
     // Verify ~/.minitok check is accumulated
     assert.ok(
       doctorSrc.includes('allOk = check("~/.minitok'),
@@ -98,6 +108,29 @@ describe("Regression: doctor success message reflects actual check results", () 
       doctorSrc.includes("allOk = check(`  ${role}`"),
       "Role checks must be accumulated into allOk"
     );
+  });
+});
+
+describe("Regression: internal admin activation command stays unshipped", () => {
+  it("is not registered by the public CLI", () => {
+    const binSrc = require("fs").readFileSync(
+      require("path").join(__dirname, "..", "bin", "minitok.js"),
+      "utf-8"
+    );
+    assert.ok(!binSrc.includes('command("admin-activate")'), "admin-activate must not be publicly registered");
+  });
+
+  it("is excluded from typecheck and package files", () => {
+    const packageJson = JSON.parse(require("fs").readFileSync(
+      require("path").join(__dirname, "..", "package.json"),
+      "utf-8"
+    ));
+    const tsconfig = JSON.parse(require("fs").readFileSync(
+      require("path").join(__dirname, "..", "tsconfig.json"),
+      "utf-8"
+    ));
+    assert.ok(tsconfig.exclude.includes("src/cli/commands/admin-activate.js"));
+    assert.ok(packageJson.files.includes("!src/cli/commands/admin-activate.js"));
   });
 });
 

@@ -10,6 +10,11 @@ const VALID_EVENT_TYPES = [
   "task_started", "task_completed", "task_failed",
   "session_start", "session_end",
 ];
+const EVENT_KEYS = new Set(["type", "path", "action", "command", "passed", "status", "summary", "duration_ms", "count"]);
+const SECRET_KEY = /(token|secret|password|credential|authorization|api[_-]?key|private[_-]?key|prompt)/i;
+const MAX_EVENTS = 100;
+const MAX_STRING = 1000;
+const MAX_FILE_BYTES = 1024 * 1024;
 
 class ObservationService {
   constructor(options = {}) {
@@ -19,6 +24,7 @@ class ObservationService {
   ingest(options = {}) {
     const { project, events } = options;
     if (!Array.isArray(events)) return { accepted: 0, errors: ["events must be an array"] };
+    if (events.length > MAX_EVENTS) return { accepted: 0, errors: [`events must contain at most ${MAX_EVENTS} items`] };
 
     const valid = [];
     const errors = [];
@@ -27,14 +33,23 @@ class ObservationService {
         errors.push(`Invalid event type: ${event?.type || "missing"}`);
         continue;
       }
-      valid.push({
-        ...event,
-        ingested_at: new Date().toISOString(),
-      });
+      const safe = {};
+      for (const [key, value] of Object.entries(event)) {
+        if (!EVENT_KEYS.has(key) || SECRET_KEY.test(key)) continue;
+        if (typeof value === "string") {
+          if (value.length > MAX_STRING) { errors.push(`Event field too long: ${key}`); continue; }
+          safe[key] = value;
+        } else if (typeof value === "boolean" || (Number.isFinite(value) && Number.isSafeInteger(value))) {
+          safe[key] = value;
+        }
+      }
+      safe.type = event.type;
+      safe.ingested_at = new Date().toISOString();
+      valid.push(safe);
     }
 
     if (valid.length > 0) {
-      this._persistEvents(project || "default", valid);
+      this._persistEvents(typeof project === "string" && project.length <= MAX_STRING ? project : "default", valid);
     }
 
     return { accepted: valid.length, errors };
@@ -63,7 +78,11 @@ class ObservationService {
     const projectDir = path.join(this._storageDir, this._hashProject(project));
     fs.mkdirSync(projectDir, { recursive: true });
     const date = new Date().toISOString().slice(0, 10);
-    const file = path.join(projectDir, `${date}.jsonl`);
+    let file = path.join(projectDir, `${date}.jsonl`);
+    if (fs.existsSync(file) && fs.statSync(file).size >= MAX_FILE_BYTES) {
+      let index = 1;
+      do { file = path.join(projectDir, `${date}-${index}.jsonl`); index++; } while (fs.existsSync(file) && fs.statSync(file).size >= MAX_FILE_BYTES);
+    }
     const lines = events.map(e => JSON.stringify(e)).join("\n") + "\n";
     fs.appendFileSync(file, lines, "utf-8");
   }

@@ -3,7 +3,184 @@
 const FETCH_TIMEOUT_MS = 300000; // Allow slow reasoning providers up to five minutes
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024; // 2 MB max response body
 
-const { authManager, ALIAS_MAP } = require("../auth");
+const dns = require("dns").promises;
+const net = require("net");
+const { authManager } = require("../auth");
+const { Agent } = require("undici");
+const { getProxyDispatcher, shouldBypassProxy } = require("../core/http");
+
+function providerError(name, status) {
+  return new Error(`${name} API request failed (${status})`);
+}
+
+function validateProviderEndpoint(raw, label = "Provider endpoint") {
+  let parsed;
+  try { parsed = new URL(raw); } catch { throw new Error(`${label} must be a valid URL`); }
+  if (!["https:", "http:"].includes(parsed.protocol)) throw new Error(`${label} must use HTTP or HTTPS`);
+  if (parsed.protocol === "http:" && !["localhost", "127.0.0.1", "::1"].includes(parsed.hostname)) throw new Error(`${label} HTTP endpoints are limited to localhost`);
+  const hostname = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (parsed.protocol === "https:" && (isBlockedAddress(hostname) || hostname === "localhost" || hostname.endsWith(".localhost") || hostname.endsWith(".local") || hostname === "metadata" || hostname === "metadata.google.internal" || hostname === "metadata.google.internal.")) throw new Error(`${label} host is blocked`);
+  if (parsed.username || parsed.password) throw new Error(`${label} must not contain credentials`);
+  if (parsed.search || parsed.hash) throw new Error(`${label} must not contain a query or fragment`);
+  return parsed.origin + parsed.pathname.replace(/\/+$/, "");
+}
+
+function ipv4Number(address) {
+  return address.split(".").reduce((value, octet) => (value * 256) + Number(octet), 0);
+}
+
+function ipv6Number(address) {
+  let value = address.toLowerCase().replace(/^\[|\]$/g, "");
+  if (value.includes(".")) {
+    const lastColon = value.lastIndexOf(":");
+    const ipv4 = value.slice(lastColon + 1);
+    if (!net.isIPv4(ipv4)) return null;
+    const number = ipv4Number(ipv4);
+    value = `${value.slice(0, lastColon)}:${(number >>> 16).toString(16)}:${(number & 0xffff).toString(16)}`;
+  }
+  const halves = value.split("::");
+  if (halves.length > 2) return null;
+  const left = halves[0] ? halves[0].split(":") : [];
+  const right = halves.length === 2 && halves[1] ? halves[1].split(":") : [];
+  const expanded = halves.length === 2 ? [...left, ...Array(8 - left.length - right.length).fill("0"), ...right] : left;
+  if (expanded.length !== 8 || expanded.some(part => !/^[0-9a-f]{1,4}$/.test(part))) return null;
+  return expanded.reduce((value, part) => (value << 16n) | BigInt(`0x${part}`), 0n);
+}
+
+function inIpv6Range(value, prefix, bits) {
+  const mask = ((1n << BigInt(bits)) - 1n) << BigInt(128 - bits);
+  return (value & mask) === (prefix & mask);
+}
+
+function isBlockedAddress(address) {
+  const normalized = address.toLowerCase().replace(/^\[|\]$/g, "");
+  if (normalized.startsWith("::ffff:") && net.isIPv4(normalized.slice(7))) return isBlockedAddress(normalized.slice(7));
+  if (net.isIPv4(normalized)) {
+    const value = ipv4Number(normalized);
+    const first = value >>> 24;
+    return first === 0 || first === 10 || first === 127 || first >= 224 ||
+      (value >= 0x64400000 && value <= 0x647fffff) ||
+      (value >= 0xa9fe0000 && value <= 0xa9feffff) ||
+      (value >= 0xac100000 && value <= 0xac1fffff) ||
+      (value >= 0xc0000000 && value <= 0xc00000ff) ||
+      (value >= 0xc0000200 && value <= 0xc00002ff) ||
+      (value >= 0xc0001000 && value <= 0xc00010ff) ||
+      (value >= 0xc0a80000 && value <= 0xc0a8ffff) ||
+      (value >= 0xc6120000 && value <= 0xc613ffff) ||
+      (value >= 0xc6336400 && value <= 0xc63364ff) ||
+      (value >= 0xcb007100 && value <= 0xcb0071ff) ||
+      value >= 0xf0000000;
+  }
+  if (!net.isIPv6(normalized)) return false;
+  const value = ipv6Number(normalized);
+  if (value === null) return false;
+  if ((value >> 32n) === 0xffffn) {
+    const mapped = Number(value & 0xffffffffn);
+    return isBlockedAddress(`${mapped >>> 24}.${(mapped >>> 16) & 255}.${(mapped >>> 8) & 255}.${mapped & 255}`);
+  }
+  return value === 0n || value === 1n ||
+    inIpv6Range(value, 0xfc000000000000000000000000000000n, 7) ||
+    inIpv6Range(value, 0xfe800000000000000000000000000000n, 10) ||
+    inIpv6Range(value, 0xff000000000000000000000000000000n, 8) ||
+    inIpv6Range(value, 0x20010000000000000000000000000000n, 32) ||
+    inIpv6Range(value, 0x20010db8000000000000000000000000n, 32) ||
+    inIpv6Range(value, 0x20010010000000000000000000000000n, 28) ||
+    inIpv6Range(value, 0x20010002000000000000000000000000n, 48);
+}
+
+async function resolvePublicEndpoint(raw, label = "Provider endpoint") {
+  const parsed = new URL(raw);
+  if (parsed.protocol !== "https:") return { dispatcher: undefined, url: raw, headers: {} };
+  const hostname = parsed.hostname.replace(/^\[|\]$/g, "");
+  let addresses;
+  try {
+    addresses = net.isIP(hostname) ? [hostname] : (await dns.lookup(hostname, { all: true })).map(result => result.address);
+  } catch {
+    throw new Error(`${label} DNS resolution failed`);
+  }
+  if (!addresses.length || addresses.some(isBlockedAddress)) throw new Error(`${label} resolves to a blocked internal address`);
+  const address = addresses[0];
+  if (shouldBypassProxy(raw)) {
+    const dispatcher = new Agent({ connect: { lookup: (_hostname, options, callback) => {
+      const family = options?.family;
+      const candidate = addresses.find(value => !family || net.isIP(value) === family);
+      if (candidate) callback(null, candidate, net.isIP(candidate));
+      else callback(new Error("Custom provider endpoint has no address for requested address family"), "", 0);
+    } } });
+    return { dispatcher, url: raw, headers: {} };
+  }
+  const proxy = require("../core/http").getProxyDispatcher(raw);
+  if (!proxy) return { dispatcher: undefined, url: raw, headers: {} };
+  const pinned = new URL(raw);
+  pinned.hostname = address.includes(":") ? `[${address}]` : address;
+  return { dispatcher: require("undici").ProxyAgent ? new (require("undici").ProxyAgent)({ uri: process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy, requestTls: { servername: hostname } }) : proxy, url: pinned.toString(), headers: { Host: parsed.host } };
+}
+
+const resolvePublicCustomEndpoint = (raw) => resolvePublicEndpoint(raw, "Custom provider endpoint");
+
+const validateCustomEndpoint = (raw) => {
+  const endpoint = validateProviderEndpoint(raw, "Custom provider endpoint");
+  if (new URL(endpoint).protocol === "https:") {
+    const hostname = new URL(endpoint).hostname.toLowerCase().replace(/^\[|\]$/g, "");
+    if (isBlockedAddress(hostname) || hostname === "localhost" || hostname.endsWith(".localhost") || hostname.endsWith(".local") || hostname === "metadata.google.internal" || hostname === "metadata" || hostname === "metadata.google.internal.") throw new Error("Custom provider endpoint host is blocked");
+  }
+  return endpoint;
+};
+
+async function readCappedResponse(res) {
+  if (!res.body || typeof res.body.getReader !== "function") return res;
+  const reader = res.body.getReader();
+  const chunks = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > MAX_RESPONSE_BYTES) {
+        try { await reader.cancel(); } catch {}
+        throw new Error(`Response too large: ${total} bytes (max ${MAX_RESPONSE_BYTES})`);
+      }
+      chunks.push(Buffer.from(value));
+    }
+  } finally {
+    try { reader.releaseLock(); } catch {}
+  }
+  return new Response(Buffer.concat(chunks), {
+    status: res.status,
+    statusText: res.statusText,
+    headers: res.headers,
+  });
+}
+
+const RETRY_DEFAULTS = { maxRetries: 5, backoffMs: 250, maxBackoffMs: 1250 };
+let _retryPolicy = { ...RETRY_DEFAULTS };
+
+/**
+ * Configure the shared HTTP retry policy (wired from minitok.yml
+ * execution.max_retries / retry_backoff_sec / retry_max_sec).
+ */
+function configureRetries(policy = {}) {
+  const clamp = (value, min, max, fallback) => (Number.isFinite(Number(value)) ? Math.min(Math.max(Number(value), min), max) : fallback);
+  _retryPolicy = {
+    maxRetries: clamp(policy.maxRetries, 0, 10, RETRY_DEFAULTS.maxRetries),
+    backoffMs: clamp(policy.backoffMs, 250, 120000, RETRY_DEFAULTS.backoffMs),
+    maxBackoffMs: clamp(policy.maxBackoffMs, 250, 1800000, RETRY_DEFAULTS.maxBackoffMs),
+  };
+}
+
+function _isRetryableStatus(status) {
+  return status === 429 || status >= 500;
+}
+
+function _retryAfterMs(res) {
+  const header = res.headers.get("retry-after");
+  if (!header) return null;
+  const seconds = Number(header);
+  if (Number.isFinite(seconds) && String(seconds) === header.trim()) return Math.max(0, seconds * 1000);
+  const at = new Date(header).getTime();
+  return Number.isNaN(at) ? null : Math.max(0, at - Date.now());
+}
 
 class LLMProvider {
   constructor(name, config = {}) {
@@ -11,10 +188,12 @@ class LLMProvider {
     this.config = config;
     this._authManager = authManager;
   }
+  /** @returns {Promise<object>} */
   async complete(messages, options = {}) {
     throw new Error(`${this.name}.complete() not implemented`);
   }
-  isAvailable() { return false; }
+  /** @returns {Promise<boolean>} */
+  async isAvailable() { return false; }
   /** Resolve auth headers using the auth module. */
   async _resolveAuth() {
     return this._authManager.resolve(this.name, this.config);
@@ -22,26 +201,44 @@ class LLMProvider {
 }
 
 /**
- * Fetch with timeout and response size limit to prevent memory exhaustion.
+ * Fetch with timeout, response size limit, and retries for transport errors
+ * and transient HTTP statuses (429/5xx), honoring Retry-After when present.
  */
-async function fetchWithTimeout(url, opts = {}, timeoutMs = FETCH_TIMEOUT_MS) {
-  const attempts = opts.retry_network_errors === false ? 1 : 5;
+async function fetchWithTimeout(url, opts = {}, timeoutMs = FETCH_TIMEOUT_MS, retryOverride = {}) {
+  const policy = { ..._retryPolicy, ...retryOverride };
+  const deadline = Date.now() + timeoutMs;
+  const attempts = (/** @type {any} */ (opts)).retry_network_errors === false ? 1 : Math.max(1, policy.maxRetries + 1);
   const requestOpts = { ...opts };
-  delete requestOpts.retry_network_errors;
+  delete /** @type {any} */ (requestOpts).retry_network_errors;
   let lastError;
   for (let attempt = 1; attempt <= attempts; attempt++) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) throw new Error("Provider request deadline exceeded");
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const timer = setTimeout(() => controller.abort(), remaining);
     try {
-      const res = await fetch(url, { ...requestOpts, signal: controller.signal });
+      const dispatcher = /** @type {any} */ (requestOpts).dispatcher || getProxyDispatcher(url);
+      const res = await fetch(url, { ...requestOpts, ...(dispatcher ? { dispatcher } : {}), signal: controller.signal });
       const contentLength = parseInt(res.headers.get("content-length") || "0", 10);
       if (contentLength > MAX_RESPONSE_BYTES) throw new Error(`Response too large: ${contentLength} bytes (max ${MAX_RESPONSE_BYTES})`);
-      return res;
+      const cappedRes = await readCappedResponse(res);
+      if (_isRetryableStatus(res.status) && attempt < attempts) {
+        const serverDelay = _retryAfterMs(res);
+        const backoffDelay = Math.min(policy.backoffMs * Math.pow(2, attempt - 1), policy.maxBackoffMs);
+        // Retry-After is advisory; never let a provider response suspend a
+        // paid run beyond the configured retry ceiling.
+        const delayMs = Math.min(serverDelay ?? backoffDelay, policy.maxBackoffMs, Math.max(0, deadline - Date.now()));
+        try { await cappedRes.arrayBuffer(); } catch {}
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        continue;
+      }
+      return cappedRes;
     } catch (error) {
       lastError = error;
-      const networkFailure = error?.name === "TypeError" || /ECONNRESET|ECONNREFUSED|UND_ERR|fetch failed/i.test(error?.message || "");
+      const networkFailure = error?.name === "TypeError" || error?.name === "AbortError" || /ECONNRESET|ECONNREFUSED|UND_ERR|fetch failed|aborted/i.test(error?.message || "");
       if (!networkFailure || attempt === attempts) throw error;
-      await new Promise(resolve => setTimeout(resolve, 250 * attempt));
+      const delay = Math.min(250 * attempt, Math.max(0, deadline - Date.now()));
+      await new Promise(resolve => setTimeout(resolve, delay));
     } finally {
       clearTimeout(timer);
     }
@@ -49,11 +246,54 @@ async function fetchWithTimeout(url, opts = {}, timeoutMs = FETCH_TIMEOUT_MS) {
   throw lastError;
 }
 
+/**
+ * Fallback provider — retries a failed completion on alternative models of
+ * the same provider (wired from roles.<role>.fallback_model).
+ */
+class FallbackProvider extends LLMProvider {
+  constructor(primary, fallbackModels = []) {
+    super(primary.name, primary.config);
+    this.primary = primary;
+    this.fallbackModels = fallbackModels.filter(Boolean);
+  }
+  /** @returns {Promise<boolean>} */
+  async isAvailable() {
+    try { return await this.primary.isAvailable(); } catch { return false; }
+  }
+  async complete(messages, options = {}) {
+    try {
+      return await this.primary.complete(messages, options);
+    } catch (error) {
+      const attempted = new Set([options.model, this.primary.config.model].filter(Boolean));
+      for (const model of this.fallbackModels) {
+        if (attempted.has(model)) continue;
+        attempted.add(model);
+        try {
+          return await this.primary.complete(messages, { ...options, model });
+        } catch {}
+      }
+      throw error;
+    }
+  }
+}
+
+/**
+ * Estimate USD cost for a usage object using optional per-provider pricing
+ * ({ input_per_mtok, output_per_mtok } from minitok.yml providers config).
+ */
+function _estimateCost(tokens, pricing) {
+  if (!tokens || !pricing) return { input: 0, output: 0, total: 0 };
+  const input = ((tokens.input || 0) / 1e6) * (Number(pricing.input_per_mtok) || 0);
+  const output = ((tokens.output || 0) / 1e6) * (Number(pricing.output_per_mtok) || 0);
+  const total = input + output;
+  return { input, output, total };
+}
+
 class AnthropicProvider extends LLMProvider {
   constructor(config = {}) {
     super("anthropic", config);
     this.apiKey = config.api_key || process.env.ANTHROPIC_API_KEY || "";
-    this.baseUrl = config.endpoint || "https://api.anthropic.com";
+    this.baseUrl = validateProviderEndpoint(config.endpoint || "https://api.anthropic.com", "Anthropic endpoint");
   }
   async isAvailable() {
     try {
@@ -88,9 +328,10 @@ class AnthropicProvider extends LLMProvider {
       if (body.max_tokens < 16000) body.max_tokens = 16000;
     }
 
+    const endpointTransport = await resolvePublicEndpoint(this.baseUrl, "Anthropic endpoint");
     const headers = { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" };
-    const res = await fetchWithTimeout(`${this.baseUrl}/v1/messages`, { method: "POST", headers, body: JSON.stringify(body) });
-    if (!res.ok) throw new Error(`Anthropic API error ${res.status}: ${await res.text()}`);
+    const res = await fetchWithTimeout(`${endpointTransport.url}/v1/messages`, { method: "POST", headers, body: JSON.stringify(body), ...(endpointTransport.dispatcher ? { dispatcher: endpointTransport.dispatcher } : {}) });
+    if (!res.ok) throw providerError("Anthropic", res.status);
     const data = await res.json();
     const textBlocks = (data.content || []).filter(b => b.type === "text");
     return { text: textBlocks.map((b) => b.text).join("") || "", model: data.model, usage: data.usage || {}, tokens: _countTokens(data.usage) };
@@ -101,7 +342,7 @@ class OpenAIProvider extends LLMProvider {
   constructor(config = {}) {
     super("openai", config);
     this.apiKey = config.api_key || process.env.OPENAI_API_KEY || "";
-    this.baseUrl = config.endpoint || "https://api.openai.com";
+    this.baseUrl = validateProviderEndpoint(config.endpoint || "https://api.openai.com", "OpenAI endpoint");
   }
   async isAvailable() {
     try { const { token } = await this._resolveAuth(); return Boolean(token || this.apiKey); }
@@ -122,12 +363,14 @@ class OpenAIProvider extends LLMProvider {
       delete body.temperature;
     }
 
-    const res = await fetchWithTimeout(`${this.baseUrl}/v1/chat/completions`, {
+    const endpointTransport = await resolvePublicEndpoint(this.baseUrl, "OpenAI endpoint");
+    const res = await fetchWithTimeout(`${endpointTransport.url}/v1/chat/completions`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: "Bearer " + apiKey },
       body: JSON.stringify(body),
+      ...(endpointTransport.dispatcher ? { dispatcher: endpointTransport.dispatcher } : {}),
     });
-    if (!res.ok) throw new Error(`OpenAI API error ${res.status}: ${await res.text()}`);
+    if (!res.ok) throw providerError("OpenAI", res.status);
     const data = await res.json();
     return { text: data.choices?.[0]?.message?.content || "", model: data.model, usage: data.usage || {}, tokens: _countTokens(data.usage) };
   }
@@ -137,7 +380,7 @@ class GoogleProvider extends LLMProvider {
   constructor(config = {}) {
     super("google", config);
     this.apiKey = config.api_key || process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || "";
-    this.baseUrl = config.endpoint || "https://generativelanguage.googleapis.com";
+    this.baseUrl = validateProviderEndpoint(config.endpoint || "https://generativelanguage.googleapis.com", "Google endpoint");
   }
   async isAvailable() {
     try { const { token } = await this._resolveAuth(); return Boolean(token || this.apiKey); }
@@ -166,12 +409,14 @@ class GoogleProvider extends LLMProvider {
       }
     }
 
-    const res = await fetchWithTimeout(`${this.baseUrl}/v1beta/models/${model}:generateContent`, {
+    const endpointTransport = await resolvePublicEndpoint(this.baseUrl, "Google endpoint");
+    const res = await fetchWithTimeout(`${endpointTransport.url}/v1beta/models/${model}:generateContent`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
       body: JSON.stringify(body),
+      ...(endpointTransport.dispatcher ? { dispatcher: endpointTransport.dispatcher } : {}),
     });
-    if (!res.ok) throw new Error(`Google API error ${res.status}: ${await res.text()}`);
+    if (!res.ok) throw providerError("Google", res.status);
     const data = await res.json();
     // Filter out thought parts from candidates
     const parts = data.candidates?.[0]?.content?.parts || [];
@@ -209,7 +454,7 @@ class OpenRouterProvider extends LLMProvider {
   constructor(config = {}) {
     super("openrouter", config);
     this.apiKey = config.api_key || process.env.OPENROUTER_API_KEY || "";
-    this.baseUrl = (config.endpoint || "https://openrouter.ai/api").replace(/\/+$/, "");
+    this.baseUrl = validateProviderEndpoint(config.endpoint || "https://openrouter.ai/api", "OpenRouter endpoint");
   }
   async isAvailable() {
     try { const { token } = await this._resolveAuth(); return Boolean(token || this.apiKey); }
@@ -223,16 +468,20 @@ class OpenRouterProvider extends LLMProvider {
     const body = { model, messages: messages.map(m => ({ role: m.role, content: m.content })), max_tokens: options.max_tokens || 4096 };
     const effort = options.reasoning_effort || options.effort || this.config.effort;
     if (effort) body.reasoning_effort = effort;
+    const endpointTransport = await resolvePublicEndpoint(this.baseUrl, "OpenRouter endpoint");
     const headers = { "Content-Type": "application/json", Authorization: "Bearer " + apiKey, "HTTP-Referer": "https://github.com/minitok/minitok", "X-Title": "minitok" };
-    const res = await fetchWithTimeout(`${this.baseUrl}/v1/chat/completions`, { method: "POST", headers, body: JSON.stringify(body) });
-    if (!res.ok) throw new Error(`OpenRouter error ${res.status}: ${await res.text()}`);
+    const res = await fetchWithTimeout(`${endpointTransport.url}/v1/chat/completions`, { method: "POST", headers, body: JSON.stringify(body), ...(endpointTransport.dispatcher ? { dispatcher: endpointTransport.dispatcher } : {}) });
+    if (!res.ok) throw providerError("OpenRouter", res.status);
     const data = await res.json();
     return { text: data.choices?.[0]?.message?.content || "", model: data.model, usage: data.usage || {}, tokens: _countTokens(data.usage) };
   }
-  static async fetchModels(apiKey) {
-    if (!apiKey) return [];
+  static async fetchModels(apiKey, auth = {}) {
     try {
-      const res = await fetchWithTimeout("https://openrouter.ai/api/v1/models", { headers: { Authorization: "Bearer " + apiKey } }, 15000);
+      const resolved = await authManager.resolve("openrouter", { api_key: apiKey, ...(Object.keys(auth).length > 0 ? { auth } : {}) });
+      const headers = { ...(resolved.headers || {}) };
+      if (resolved.token && !Object.keys(headers).some(header => header.toLowerCase() === "authorization")) headers.Authorization = `Bearer ${resolved.token}`;
+      if (!resolved.token && !Object.keys(headers).length) return [];
+      const res = await fetchWithTimeout("https://openrouter.ai/api/v1/models", { headers }, 15000);
       if (!res.ok) return [];
       const data = await res.json();
       return (data.data || []).map(m => ({ id: m.id, display: m.name || m.id, context_window: m.context_length || 128000, max_output: m.top_provider?.max_completion_tokens || null, pricing: m.pricing || null, supported_parameters: m.supported_parameters || [] }));
@@ -248,12 +497,13 @@ class CustomProvider extends LLMProvider {
   constructor(config = {}) {
     super(config._name || "custom", config);
     this.apiKey = config.api_key || "";
-    this.baseUrl = (config.base_url || "").replace(/\/+$/, "");
+    this.baseUrl = config.base_url ? validateCustomEndpoint(config.base_url) : "";
     this.models = config.models || [];
   }
   async isAvailable() { return Boolean(this.baseUrl); }
   async complete(messages, options = {}) {
     if (!this.baseUrl) throw new Error(`${this.name}: base_url not configured`);
+    const endpointTransport = await resolvePublicCustomEndpoint(this.baseUrl);
     const auth = await this._resolveAuth();
     const apiKey = this.apiKey || auth.token || "";
     const model = options.model || this.config.model || (this.models[0]?.id) || "default";
@@ -265,16 +515,27 @@ class CustomProvider extends LLMProvider {
       headers[header] = scheme === "raw" ? apiKey : `${scheme} ${apiKey}`;
     }
     const apiPath = this.baseUrl.endsWith("/v1") ? "/chat/completions" : "/v1/chat/completions";
-    const res = await fetchWithTimeout(`${this.baseUrl}${apiPath}`, { method: "POST", headers, body: JSON.stringify(body) });
-    if (!res.ok) throw new Error(`${this.name} error ${res.status}: ${await res.text()}`);
+    const requestHeaders = { ...headers, ...endpointTransport.headers };
+    const res = await fetchWithTimeout(`${endpointTransport.url}${apiPath}`, { method: "POST", headers: requestHeaders, body: JSON.stringify(body), ...(endpointTransport.dispatcher ? { dispatcher: endpointTransport.dispatcher } : {}) });
+    if (!res.ok) throw providerError(this.name, res.status);
     const data = await res.json();
     return { text: data.choices?.[0]?.message?.content || "", model: data.model || model, usage: data.usage || {}, tokens: _countTokens(data.usage) };
   }
-  static async fetchModels(baseUrl, apiKey) {
+  static async fetchModels(baseUrl, apiKey, auth = {}, providerName = "custom") {
     if (!baseUrl) return [];
     try {
-      const headers = apiKey ? { Authorization: "Bearer " + apiKey } : {};
-      const res = await fetchWithTimeout(`${baseUrl.replace(/\/+$/, "")}/v1/models`, { headers }, 10000);
+      const endpoint = validateCustomEndpoint(baseUrl);
+      const endpointTransport = await resolvePublicCustomEndpoint(endpoint);
+      const resolvedAuth = await authManager.resolve(providerName, { api_key: apiKey, ...(Object.keys(auth).length > 0 ? { auth } : {}) });
+      const headers = { ...(resolvedAuth.headers || {}) };
+      const token = resolvedAuth.token || apiKey;
+      if (token && !Object.keys(headers).some(header => header.toLowerCase() === "authorization" || header.toLowerCase() === "x-api-key")) {
+        const scheme = auth.scheme || "Bearer";
+        const header = auth.header || "Authorization";
+        headers[header] = scheme === "raw" ? token : `${scheme} ${token}`;
+      }
+      const requestHeaders = { ...headers, ...endpointTransport.headers };
+      const res = await fetchWithTimeout(`${endpointTransport.url}/v1/models`, { headers: requestHeaders, ...(endpointTransport.dispatcher ? { dispatcher: endpointTransport.dispatcher } : {}) }, 10000);
       if (!res.ok) return [];
       const data = await res.json();
       return (data.data || []).map(m => ({ id: m.id, display: m.id, context_window: m.context_length || null, max_output: null }));
@@ -313,5 +574,5 @@ async function detectAvailableProviders(config) {
   return p;
 }
 
-module.exports = { LLMProvider, AnthropicProvider, OpenAIProvider, GoogleProvider, OpenRouterProvider, CustomProvider, createProvider, detectAvailableProviders, fetchWithTimeout, _countTokens };
+module.exports = { LLMProvider, FallbackProvider, AnthropicProvider, OpenAIProvider, GoogleProvider, OpenRouterProvider, CustomProvider, createProvider, detectAvailableProviders, fetchWithTimeout, configureRetries, _countTokens, _estimateCost };
 

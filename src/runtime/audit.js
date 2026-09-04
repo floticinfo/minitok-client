@@ -12,7 +12,7 @@ class AuditService {
   }
 
   log(entry) {
-    auditLog(entry, this._path);
+    return auditLog(entry, this._path);
   }
 }
 

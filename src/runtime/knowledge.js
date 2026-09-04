@@ -8,17 +8,17 @@ class KnowledgeService {
   }
 
   query(options = {}) {
-    const { limit, filter } = options;
-    let outcomes = this._store.getAll();
+    const { limit, filter, project } = options;
+    let outcomes = this._store.getAll(project);
     if (filter) {
       if (filter.status) outcomes = outcomes.filter(o => o.status === filter.status);
     }
     if (limit) outcomes = outcomes.slice(-limit);
-    return { outcomes, total: this._store.size };
+    return { outcomes, total: outcomes.length };
   }
 
   record(outcome) {
-    const recorded = this._store.record(outcome);
+    this._store.record(outcome);
     return { recorded: true, total: this._store.size };
   }
 

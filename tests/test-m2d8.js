@@ -15,41 +15,47 @@ const { EntitlementStore } = require("../src/entitlement/store");
 const { resolveServerUrl, saveServerUrl, DEFAULT_SERVER_URL } = require("../src/cli/commands/server-config");
 
 describe("M2.D8 — Server URL Configuration", () => {
-  const origEnv = process.env.minitok_SERVER_URL;
+  const origEnv = process.env.minitok_server_url;
 
   it("returns default when nothing configured", () => {
-    delete process.env.minitok_SERVER_URL;
+    delete process.env.minitok_server_url;
     const url = resolveServerUrl();
     assert.equal(url, DEFAULT_SERVER_URL);
   });
 
-  it("respects minitok_SERVER_URL env", () => {
-    process.env.minitok_SERVER_URL = "http://localhost:4000";
+  it("respects minitok_server_url env", () => {
+    process.env.minitok_server_url = "http://localhost:4000";
     const url = resolveServerUrl();
     assert.equal(url, "http://localhost:4000");
-    delete process.env.minitok_SERVER_URL;
+    delete process.env.minitok_server_url;
   });
 
-  it("respects --server CLI flag", () => {
-    process.env.minitok_SERVER_URL = "http://env.example.com";
-    const url = resolveServerUrl({ cliServer: "http://cli.example.com:9999" });
-    assert.equal(url, "http://cli.example.com:9999");
-    delete process.env.minitok_SERVER_URL;
+  it("respects --server CLI flag for HTTPS endpoints", () => {
+    process.env.minitok_server_url = "https://env.example.com";
+    const url = resolveServerUrl({ cliServer: "https://cli.example.com:9999" });
+    assert.equal(url, "https://cli.example.com:9999");
+    delete process.env.minitok_server_url;
   });
 
-  it("normalizes trailing slash", () => {
-    const url = resolveServerUrl({ cliServer: "http://example.com/" });
-    assert.equal(url, "http://example.com");
+  it("normalizes trailing slash for HTTPS endpoints", () => {
+    const url = resolveServerUrl({ cliServer: "https://example.com/" });
+    assert.equal(url, "https://example.com");
   });
 
-  it("rejects malformed URL gracefully", () => {
-    const url = resolveServerUrl({ cliServer: "not-a-url" });
-    assert.equal(url, DEFAULT_SERVER_URL);
+  it("rejects malformed URL", () => {
+    assert.throws(() => resolveServerUrl({ cliServer: "not-a-url" }), /invalid/i);
   });
 
-  it("rejects ftp protocol gracefully", () => {
-    const url = resolveServerUrl({ cliServer: "ftp://example.com" });
-    assert.equal(url, DEFAULT_SERVER_URL);
+  it("rejects unsupported protocol", () => {
+    assert.throws(() => resolveServerUrl({ cliServer: "ftp://example.com" }), /http or https/i);
+  });
+
+  it("rejects remote HTTP endpoints", () => {
+    assert.throws(() => resolveServerUrl({ cliServer: "http://example.com" }), /remote http/i);
+  });
+
+  it("allows loopback HTTP endpoints for development", () => {
+    assert.equal(resolveServerUrl({ cliServer: "http://127.0.0.1:4000/" }), "http://127.0.0.1:4000");
   });
 });
 
@@ -83,7 +89,7 @@ describe("M2.D8 — Entitlement Store (round-trip)", () => {
     const store = new EntitlementStore(tmpDir);
 
     const artifact = {
-      payload: { entitlement_id: "test", plan_id: "pro", features: [], max_devices: 3, issued_at: new Date().toISOString(), expires_at: "2030-01-01T00:00:00Z", key_id: "test-key" },
+      payload: { entitlement_id: "test", plan_id: "open", features: [], max_devices: 3, issued_at: new Date().toISOString(), expires_at: "2030-01-01T00:00:00Z", key_id: "test-key" },
       signature: "test-sig",
       key_id: "test-key",
     };

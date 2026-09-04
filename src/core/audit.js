@@ -27,9 +27,12 @@ function auditLog(entry, auditPath) {
     const dir = path.dirname(fp);
     fs.mkdirSync(dir, { recursive: true });
     fs.appendFileSync(fp, JSON.stringify(record) + "\n", "utf-8");
-  } catch {
-    // Audit log failure should never block pipeline
+  } catch (error) {
+    const warning = { persisted: false, record, warning: `Audit persistence failed: ${error.message}` };
+    process.emitWarning(warning.warning, { code: "MINITOK_AUDIT_PERSISTENCE" });
+    return warning;
   }
+  return { persisted: true, record };
 }
 
 /**

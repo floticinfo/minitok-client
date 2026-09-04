@@ -2,25 +2,47 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
+const { execSync } = require("child_process");
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
 const { checkEntitlement, GateState } = require("../entitlement/gate");
 
-describe("development mode gate bypass", () => {
-  it("bypasses only in non-production environments", () => {
-    const previous = process.env.MINITOK_DEV_MODE;
-    const production = process.env.NODE_ENV === "production";
-    try {
-      process.env.NODE_ENV = "test";
-      process.env.MINITOK_DEV_MODE = "1";
-      const bypass = process.env.MINITOK_DEV_MODE === "1" && process.env.NODE_ENV !== "production";
-      assert.equal(bypass, true);
+function execGit(cwd, args) {
+  execSync("git " + args, { cwd, stdio: "pipe" });
+}
 
-      process.env.NODE_ENV = "production";
-      const blocked = process.env.MINITOK_DEV_MODE === "1" && process.env.NODE_ENV !== "production";
-      assert.equal(blocked, false);
+function tmpGitRepo() {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "minitok-devmode-"));
+  execGit(d, "init");
+  execGit(d, "config user.email t@t.com");
+  execGit(d, "config user.name T");
+  fs.writeFileSync(path.join(d, "a.txt"), "a");
+  execGit(d, "add -A");
+  execGit(d, "commit -m init");
+  return d;
+}
+
+describe("development mode gate bypass", () => {
+  it("minitok_dev_mode does not bypass the entitlement gate", async () => {
+    const previous = process.env.minitok_dev_mode;
+    process.env.minitok_dev_mode = "1";
+    try {
+      const { runPipeline } = require("./loop");
+      const d = tmpGitRepo();
+      const emptyEntitlementDir = fs.mkdtempSync(path.join(os.tmpdir(), "minitok-ent-"));
+      try {
+        await assert.rejects(
+          () => runPipeline("t", { repoRoot: d, entitlementDir: emptyEntitlementDir }),
+          /Entitlement MISSING/
+        );
+      } finally {
+        fs.rmSync(d, { recursive: true, force: true });
+        fs.rmSync(emptyEntitlementDir, { recursive: true, force: true });
+      }
     } finally {
-      if (previous === undefined) delete process.env.MINITOK_DEV_MODE;
-      else process.env.MINITOK_DEV_MODE = previous;
-      if (!production) delete process.env.NODE_ENV;
+      if (previous === undefined) delete process.env.minitok_dev_mode;
+      else process.env.minitok_dev_mode = previous;
     }
   });
 });
@@ -28,7 +50,7 @@ describe("development mode gate bypass", () => {
 describe("entitlement gate fail-closed states", () => {
   it("fails closed for unknown key ids with a non-allow state", () => {
     const r = checkEntitlement({
-      _loadArtifact: () => ({ key_id: "cv82-self", payload: { entitlement_id: "e1", installation_id: "i1", plan_id: "pro", features: [], max_devices: 1, issued_at: new Date().toISOString(), expires_at: new Date(Date.now() + 86400000).toISOString(), key_id: "cv82-self" }, signature: "AA" }),
+      _loadArtifact: () => ({ key_id: "cv82-self", payload: { entitlement_id: "e1", installation_id: "i1", plan_id: "open", features: [], max_devices: 1, issued_at: new Date().toISOString(), expires_at: new Date(Date.now() + 86400000).toISOString(), key_id: "cv82-self" }, signature: "AA" }),
       _loadGateState: () => ({ latest_observed_at: 0, last_validated_at: null }),
     });
     assert.equal(r.allowed, false);

@@ -15,7 +15,7 @@ function makePayload(overrides = {}) {
   const expires = new Date(now.getTime() + 30 * 24 * 3600 * 1000);
   return {
     entitlement_id: "12345678-1234-4123-a123-123456789abc",
-    plan_id: "pro", features: ["autonomous-coding"], max_devices: 3,
+    plan_id: "open", features: ["autonomous-coding"], max_devices: 3,
     issued_at: now.toISOString(), expires_at: expires.toISOString(),
     key_id: "test-key-1",
     installation_id: "12345678-1234-4123-a123-123456789abd",
@@ -75,7 +75,9 @@ describe("Gate: VALID", () => {
     assert.equal(r.allowed, true);
     assert.equal(r.state, GateState.ALLOWED);
     assert.ok(savedState !== null);
-    assert.ok(savedState.last_validated_at !== null);
+    // last_validated_at is reserved for ONLINE validation successes; a local
+    // gate pass updates only the monotonic clock-rollback watermark.
+    assert.ok(savedState.latest_observed_at > 0, "monotonic watermark must advance on valid entitlement");
   });
 });
 
@@ -87,7 +89,7 @@ describe("Gate: INVALID_SIGNATURE", () => {
 
   it("blocks tampered payload", () => {
     const artifact = signPayload(makePayload(), kp.privateKey, "test-key-1");
-    artifact.payload.plan_id = "enterprise";
+    artifact.payload.plan_id = "select";
     const r = checkEntitlement({ _loadArtifact: () => artifact, _loadGateState: () => ({ latest_observed_at: 0, last_validated_at: null }), _saveGateState: () => {}, installationId: "12345678-1234-4123-a123-123456789abd" });
     assert.equal(r.allowed, false);
     assert.equal(r.state, GateState.INVALID_SIGNATURE);
@@ -234,7 +236,7 @@ describe("Gate: Pipeline Order + Security", () => {
     const artifact = signPayload(makePayload(), kp.privateKey, "test-key-1");
     const r = checkEntitlement({ _loadArtifact: () => artifact, _loadGateState: () => ({ latest_observed_at: 0, last_validated_at: null }), _saveGateState: () => {}, installationId: "12345678-1234-4123-a123-123456789abd", now: new Date() });
     assert.equal(r.allowed, true);
-    assert.equal(r.entitlement.plan_id, "pro");
+    assert.equal(r.entitlement.plan_id, "open");
   });
   it("every blocked state has a message", () => {
     for (const s of [GateState.MISSING, GateState.MALFORMED, GateState.INVALID_SIGNATURE, GateState.EXPIRED, GateState.CLOCK_ROLLBACK]) {

@@ -10,13 +10,13 @@ class AnalysisService {
   }
 
   analyze(project) {
-    const outcomes = this._knowledge.query().outcomes;
+    const outcomes = this._knowledge.query({ project }).outcomes;
     const analysis = analyzeFailurePatterns(outcomes);
     return analysis;
   }
 
   recommend(project, currentPolicy = {}) {
-    const outcomes = this._knowledge.query().outcomes;
+    const outcomes = this._knowledge.query({ project }).outcomes;
     const analysis = analyzeFailurePatterns(outcomes);
     return recommendPolicy(analysis.patterns, currentPolicy);
   }

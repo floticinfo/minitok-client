@@ -13,10 +13,17 @@
  */
 
 const { EvolutionOptIn } = require("../../evolution/optin");
+const { authorizeEntitlement } = require("../../entitlement/policy");
+const { getPlanId, getTelemetryPolicy } = require("../../evolution/telemetry-policy");
 
-function cmdEvolutionStatus() {
+async function cmdEvolutionStatus() {
   const optIn = new EvolutionOptIn();
   const state = optIn.status();
+  const entitlement = await authorizeEntitlement();
+  const planId = getPlanId(entitlement);
+  const policy = getTelemetryPolicy(planId);
+  console.log(`Plan: ${planId || "none"}`);
+  console.log(`Data policy: ${policy.mode} (retention ${policy.retention_days} days)`);
   if (state.enabled) {
     console.log("Evolution upload: ENABLED");
     if (state.enabled_at) {
@@ -28,18 +35,25 @@ function cmdEvolutionStatus() {
       console.log(`  Disabled at: ${state.disabled_at}`);
     }
   }
-  console.log("\nNote: Upload also requires an active subscription with evolution_upload feature.");
+  console.log("\nUpload also requires a valid entitlement, the plan policy above, and sanitized payload validation.");
   return 0;
 }
 
-function cmdEvolutionEnable() {
+async function cmdEvolutionEnable() {
   const optIn = new EvolutionOptIn();
   if (optIn.isEnabled()) {
     console.log("Evolution upload is already enabled.");
     return 0;
   }
+  const entitlement = await authorizeEntitlement();
+  const planId = getPlanId(entitlement);
+  const policy = getTelemetryPolicy(planId);
+  if (policy.mode === "none") {
+    console.error(`Evolution upload is unavailable for the ${planId || "current"} plan.`);
+    return 1;
+  }
   optIn.enable();
-  console.log("Evolution upload: ENABLED");
+  console.log(`Evolution upload: ENABLED (${policy.mode})`);
   console.log("\nEvolution telemetry will be uploaded when:");
   console.log("  1. Active subscription with evolution_upload feature");
   console.log("  2. Local opt-in enabled (now)");
@@ -69,21 +83,21 @@ function register(program) {
     .command("status")
     .description("Show evolution upload status")
     .action(async () => {
-      process.exit(cmdEvolutionStatus());
+      process.exit(await cmdEvolutionStatus());
     });
 
   evoCmd
     .command("enable")
     .description("Enable evolution upload (explicit opt-in)")
     .action(async () => {
-      process.exit(cmdEvolutionEnable());
+      process.exit(await cmdEvolutionEnable());
     });
 
   evoCmd
     .command("disable")
     .description("Disable evolution upload")
     .action(async () => {
-      process.exit(cmdEvolutionDisable());
+      process.exit(await cmdEvolutionDisable());
     });
 }
 

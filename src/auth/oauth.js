@@ -9,6 +9,7 @@ const http = require("http");
 const crypto = require("crypto");
 const { URL } = require("url");
 const { AuthError } = require("../core/errors");
+const { fetchWithTimeout, readCappedResponse } = require("../core/http");
 
 /** @type {Record<string, object>} */
 const OAUTH_CONFIGS = {
@@ -43,6 +44,21 @@ const OAUTH_CONFIGS = {
 const DEFAULT_PORT = 9876;
 const CALLBACK_PATH = "/oauth/callback";
 const TOKEN_LIFETIME_MS = 3600 * 1000;
+const TOKEN_TIMEOUT_MS = 15000;
+const MAX_TOKEN_RESPONSE_BYTES = 1024 * 1024;
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
+}
+
+async function readResponseJson(res) {
+  let text;
+  try { text = await readCappedResponse(res, MAX_TOKEN_RESPONSE_BYTES); } catch (error) {
+    if (error.message === "HTTP response body too large") throw new AuthError("Token response is too large");
+    throw error;
+  }
+  try { return JSON.parse(text); } catch { throw new AuthError("Token response was not valid JSON"); }
+}
 
 class OAuthFlow {
   /**
@@ -100,21 +116,21 @@ class OAuthFlow {
       client_secret: config.client_secret,
     });
 
-    const res = await fetch(config.token_url, {
+    const res = await fetchWithTimeout(config.token_url, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
         Accept: "application/json",
       },
       body: params.toString(),
-    });
+    }, TOKEN_TIMEOUT_MS);
 
     if (!res.ok) {
-      const body = await res.text();
-      throw new AuthError("Token refresh failed (" + res.status + "): " + body);
+      throw new AuthError("Token refresh failed (" + res.status + ")");
     }
 
-    const data = await res.json();
+    const data = await readResponseJson(res);
+    if (!data || typeof data !== "object" || typeof data.access_token !== "string" || !data.access_token) throw new AuthError("Token response missing access_token");
     return {
       access_token: data.access_token,
       refresh_token: data.refresh_token || refreshToken,
@@ -142,16 +158,13 @@ class OAuthFlow {
         "No client_id for " + config.name + ". Set env or auth config."
       );
     }
-    // Azure AD: substitute tenant_id
-    if (provider === "azure_ad" && overrides.tenant_id) {
-      config.authorize_url = config.authorize_url.replace(
-        "{tenant_id}",
-        overrides.tenant_id
-      );
-      config.token_url = config.token_url.replace(
-        "{tenant_id}",
-        overrides.tenant_id
-      );
+    if (provider === "azure_ad") {
+      const tenantId = overrides.tenant_id;
+      if (typeof tenantId !== "string" || !/^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|common|organizations|consumers)$/i.test(tenantId)) {
+        throw new AuthError("Invalid Azure tenant_id. Use a tenant UUID or one of: common, organizations, consumers.");
+      }
+      config.authorize_url = config.authorize_url.replace("{tenant_id}", tenantId);
+      config.token_url = config.token_url.replace("{tenant_id}", tenantId);
     }
     return config;
   }
@@ -196,17 +209,13 @@ class OAuthFlow {
    * @param {string} url
    */
   _openBrowserUrl(url) {
-    const { execSync } = require("child_process");
-    const platform = process.platform;
+    const { spawn } = require("child_process");
+    const command = process.platform === "win32" ? "rundll32.exe" : process.platform === "darwin" ? "open" : "xdg-open";
+    const args = process.platform === "win32" ? ["url.dll,FileProtocolHandler", url] : [url];
     try {
-      if (platform === "win32")
-        execSync('start "" "' + url + '"', { stdio: "ignore" });
-      else if (platform === "darwin")
-        execSync('open "' + url + '"', { stdio: "ignore" });
-      else execSync('xdg-open "' + url + '"', { stdio: "ignore" });
-    } catch {
-      // Browser open failed - user can copy URL manually
-    }
+      const child = spawn(command, args, { detached: true, stdio: "ignore", windowsHide: true });
+      child.unref();
+    } catch {}
   }
 
   /**
@@ -237,10 +246,19 @@ class OAuthFlow {
 
         if (error) {
           res.writeHead(400, { "Content-Type": "text/html" });
-          res.end("<h2>Authorization failed</h2><p>" + error + "</p>");
+          res.end("<h2>Authorization failed</h2><p>" + escapeHtml(error) + "</p>");
           clearTimeout(timeout);
           server.close();
           reject(new AuthError("OAuth error: " + error));
+          return;
+        }
+
+        if (state !== expectedState) {
+          res.writeHead(400, { "Content-Type": "text/html" });
+          res.end("<h2>Authorization failed</h2>");
+          clearTimeout(timeout);
+          server.close();
+          reject(new AuthError("OAuth state mismatch — possible CSRF attack"));
           return;
         }
 
@@ -293,24 +311,21 @@ class OAuthFlow {
       code_verifier: codeVerifier,
     });
 
-    const res = await fetch(config.token_url, {
+    const res = await fetchWithTimeout(config.token_url, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
         Accept: "application/json",
       },
       body: params.toString(),
-    });
+    }, TOKEN_TIMEOUT_MS);
 
     if (!res.ok) {
-      const body = await res.text();
-      throw new AuthError(
-        "Token exchange failed (" + res.status + "): " + body
-      );
+      throw new AuthError("Token exchange failed (" + res.status + ")");
     }
 
-    const data = await res.json();
-    if (!data.access_token) {
+    const data = await readResponseJson(res);
+    if (!data || typeof data !== "object" || typeof data.access_token !== "string" || !data.access_token) {
       throw new AuthError("Token response missing access_token");
     }
 

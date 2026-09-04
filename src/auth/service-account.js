@@ -14,8 +14,28 @@ const path = require("path");
 const os = require("os");
 const crypto = require("crypto");
 const { AuthError } = require("../core/errors");
+const { fetchWithTimeout, readCappedResponse } = require("../core/http");
+
+const TOKEN_TIMEOUT_MS = 15000;
+const MAX_TOKEN_RESPONSE_BYTES = 1024 * 1024;
 
 const GCP_TOKEN_URL = "https://oauth2.googleapis.com/token";
+const MAX_OAUTH_ERROR_BYTES = 512;
+
+async function oauthError(res, flow) {
+  let body = "";
+  try { body = (await readCappedResponse(res, MAX_OAUTH_ERROR_BYTES)).slice(0, MAX_OAUTH_ERROR_BYTES); } catch {}
+  throw new AuthError(`GCP ${flow} failed (${res.status}): ${body || "request rejected"}`);
+}
+
+async function readTokenJson(res) {
+  let body;
+  try { body = await readCappedResponse(res, MAX_TOKEN_RESPONSE_BYTES); } catch (error) {
+    if (error.message === "HTTP response body too large") throw new AuthError("GCP token response is too large");
+    throw error;
+  }
+  try { return JSON.parse(body); } catch { throw new AuthError("GCP token response was not valid JSON"); }
+}
 
 class ServiceAccountResolver {
   /**
@@ -114,18 +134,15 @@ class ServiceAccountResolver {
       client_secret: keyData.client_secret,
     });
 
-    const res = await fetch(GCP_TOKEN_URL, {
+    const res = await fetchWithTimeout(GCP_TOKEN_URL, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: params.toString(),
-    });
+    }, TOKEN_TIMEOUT_MS);
 
-    if (!res.ok) {
-      const body = await res.text();
-      throw new AuthError("GCP token refresh failed (" + res.status + "): " + body);
-    }
+    if (!res.ok) await oauthError(res, "token refresh");
 
-    const data = await res.json();
+    const data = await readTokenJson(res);
     return data.access_token;
   }
 
@@ -164,18 +181,15 @@ class ServiceAccountResolver {
       assertion: jwt,
     });
 
-    const res = await fetch(GCP_TOKEN_URL, {
+    const res = await fetchWithTimeout(GCP_TOKEN_URL, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: params.toString(),
-    });
+    }, TOKEN_TIMEOUT_MS);
 
-    if (!res.ok) {
-      const body = await res.text();
-      throw new AuthError("GCP JWT exchange failed (" + res.status + "): " + body);
-    }
+    if (!res.ok) await oauthError(res, "JWT exchange");
 
-    const data = await res.json();
+    const data = await readTokenJson(res);
     return data.access_token;
   }
 }

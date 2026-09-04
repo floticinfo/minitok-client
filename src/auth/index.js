@@ -6,7 +6,8 @@
  * Supported auth types:
  *   - api_key:   Simple API key from config or environment
  *   - oauth:     Browser-based OAuth 2.0 (GitHub, Anthropic, Azure AD)
- *   - iam:       AWS IAM credential chain (access key, session token, STS)
+ *   - iam:       NOT SUPPORTED — rejected with a workaround pointer (SigV4
+ *                cannot be computed without the request URL/body hash)
  *   - service_account: Google Cloud service account (ADC)
  *   - none:      No authentication needed (Ollama, local models)
  */
@@ -14,7 +15,6 @@
 const { AuthError } = require("../core/errors");
 const { TokenStore } = require("./token-store");
 const { OAuthFlow } = require("./oauth");
-const { IAMResolver } = require("./iam");
 const { ServiceAccountResolver } = require("./service-account");
 
 const ALIAS_MAP = {
@@ -27,8 +27,8 @@ class AuthManager {
   constructor() {
     this._tokenStore = new TokenStore();
     this._oauth = new OAuthFlow();
-    this._iam = new IAMResolver();
     this._sa = new ServiceAccountResolver();
+    this._iam = { resolve: async (_auth) => ({ headers: {}, token: null }) };
   }
 
   get tokenStore() { return this._tokenStore; }
@@ -55,7 +55,14 @@ class AuthManager {
       case "oauth":
         return this._resolveOAuth(normalized, auth);
       case "iam":
-        return this._resolveIAM(normalized, auth);
+        // AWS SigV4 signing requires the request URL and body hash, which the
+        // auth resolver never sees — a Credential-only header cannot
+        // authenticate. Fail loudly instead of shipping a broken signer.
+        throw new AuthError(
+          "AWS IAM auth (SigV4) is not supported yet. " +
+          "Access Bedrock-compatible endpoints via an OpenAI-compatible proxy " +
+          "(base_url + api_key) instead."
+        );
       case "service_account":
         return this._resolveServiceAccount(normalized, auth);
       case "none":
@@ -82,8 +89,8 @@ class AuthManager {
     const envMap = {
       anthropic: "ANTHROPIC_API_KEY",
       openai: "OPENAI_API_KEY",
-      google: "GOOGLE_AI_KEY",
-      gemini: "GOOGLE_AI_KEY",
+      google: "GOOGLE_API_KEY",
+      gemini: "GEMINI_API_KEY",
       openrouter: "OPENROUTER_API_KEY",
       xai: "XAI_API_KEY",
       deepseek: "DEEPSEEK_API_KEY",

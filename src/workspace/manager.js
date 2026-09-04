@@ -9,9 +9,11 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const { WorkspaceError } = require("../core/errors");
+const { setOwnerOnlyPermissions } = require("../utils/file-permissions");
 
-const minitok_HOME = path.join(os.homedir(), ".minitok");
+const minitokHome = path.join(os.homedir(), ".minitok");
 const WORKSPACES_FILE = "workspaces.json";
+const LOCK_STALE_MS = 30000;
 
 const INDICATORS = {
   python: ["pyproject.toml", "setup.py", "setup.cfg", "requirements.txt"],
@@ -38,26 +40,61 @@ function isUnder(child, parent) {
 }
 
 class WorkspaceManager {
-  constructor(minitokHome) {
-    this._home = minitokHome || minitok_HOME;
+  constructor(minitokHomePath) {
+    this._home = minitokHomePath || minitokHome;
     this._file = path.join(this._home, WORKSPACES_FILE);
     this._registry = this._load();
+    this._removedNames = new Set();
   }
 
   _load() {
     try {
-      const data = fs.readFileSync(this._file, "utf-8");
-      return JSON.parse(data);
-    } catch {
-      return { workspaces: {}, current: null };
+      const data = JSON.parse(fs.readFileSync(this._file, "utf-8"));
+      if (!data || typeof data !== "object" || Array.isArray(data) || !data.workspaces || typeof data.workspaces !== "object" || Array.isArray(data.workspaces) || (data.current !== null && typeof data.current !== "string")) throw new Error("invalid registry");
+      for (const [name, ws] of Object.entries(data.workspaces)) {
+        if (!ws || ws.name !== name || typeof ws.repository_root !== "string" || typeof ws.workspace_directory !== "string") throw new Error("invalid workspace entry");
+      }
+      return data;
+    } catch (error) {
+      if (error.code === "ENOENT") return { workspaces: {}, current: null };
+      throw new WorkspaceError("Workspace registry is invalid");
     }
   }
 
-  _save() {
+  _save(registry = this._registry) {
     fs.mkdirSync(this._home, { recursive: true });
-    const tmp = this._file + ".tmp";
-    fs.writeFileSync(tmp, JSON.stringify(this._registry, null, 2), "utf-8");
-    fs.renameSync(tmp, this._file);
+    const lockPath = this._file + ".lock";
+    let lockFd;
+    const token = `${process.pid}-${Math.random().toString(16).slice(2)}`;
+    for (let attempt = 0; attempt < 100; attempt++) {
+      try { lockFd = fs.openSync(lockPath, "wx", 0o600); fs.writeFileSync(lockFd, JSON.stringify({ pid: process.pid, host: os.hostname(), token, createdAt: Date.now() })); break; } catch (error) {
+        if (error.code !== "EEXIST") throw error;
+        let stale = true;
+        try {
+          const lock = JSON.parse(fs.readFileSync(lockPath, "utf8"));
+          let alive = false;
+          if (lock.host === os.hostname() && Number.isInteger(lock.pid)) { try { process.kill(lock.pid, 0); alive = true; } catch {} }
+          stale = !lock || typeof lock.createdAt !== "number" || Date.now() - lock.createdAt > LOCK_STALE_MS || !alive;
+        } catch {}
+        if (stale) { try { fs.unlinkSync(lockPath); } catch {} } else Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5);
+      }
+    }
+    if (lockFd === undefined) throw new WorkspaceError("Workspace registry is busy");
+    try {
+      const current = this._load();
+      const merged = { ...current, workspaces: { ...current.workspaces, ...registry.workspaces }, current: registry.current };
+      for (const name of this._removedNames) delete merged.workspaces[name];
+      this._removedNames.clear();
+      const tmp = `${this._file}.tmp.${process.pid}.${Math.random().toString(16).slice(2)}`;
+      try {
+        fs.writeFileSync(tmp, JSON.stringify(merged, null, 2), { encoding: "utf-8", flag: "wx", mode: 0o600 });
+        setOwnerOnlyPermissions(tmp); fs.renameSync(tmp, this._file); setOwnerOnlyPermissions(this._file);
+      } finally { try { fs.unlinkSync(tmp); } catch {} }
+      this._registry = merged;
+    } finally {
+      try { fs.closeSync(lockFd); } catch {}
+      try { const lock = JSON.parse(fs.readFileSync(lockPath, "utf8")); if (lock.token === token) fs.unlinkSync(lockPath); } catch {}
+    }
   }
 
   add(name, repoRoot) {
@@ -95,6 +132,9 @@ class WorkspaceManager {
 
   use(name) {
     const ws = this.get(name);
+    ws.repository_root = fs.realpathSync(ws.repository_root);
+    if (!fs.statSync(ws.repository_root).isDirectory()) throw new WorkspaceError("Workspace repository is not a directory");
+    ws.workspace_directory = path.join(ws.repository_root, ".minitok");
     ws.last_used = new Date().toISOString();
     this._registry.current = name;
     this._save();
@@ -106,6 +146,7 @@ class WorkspaceManager {
       throw new WorkspaceError(`Workspace '${name}' not found`);
     }
     delete this._registry.workspaces[name];
+    this._removedNames.add(name);
     if (this._registry.current === name) {
       this._registry.current = null;
     }
@@ -125,7 +166,7 @@ class WorkspaceManager {
     const resolved = path.resolve(cwd || process.cwd());
     const matches = [];
     for (const ws of Object.values(this._registry.workspaces)) {
-      if (isUnder(resolved, ws.repository_root)) {
+       if (isUnder(fs.realpathSync(resolved), fs.realpathSync(ws.repository_root))) {
         matches.push(ws);
       }
     }
@@ -161,4 +202,4 @@ class WorkspaceManager {
   }
 }
 
-module.exports = { WorkspaceManager, minitok_HOME, detectProjectType };
+module.exports = { WorkspaceManager, minitokHome, detectProjectType };

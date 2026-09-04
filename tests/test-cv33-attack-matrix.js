@@ -62,7 +62,7 @@ function makePayload(overrides = {}) {
   return {
     entitlement_id: ALICE_ENT,
     installation_id: ALICE_INSTALL,
-    plan_id: "pro",
+    plan_id: "open",
     features: ["autonomous-coding", "evolution_upload"],
     max_devices: 3,
     issued_at: now.toISOString(),
@@ -129,7 +129,7 @@ afterEach(() => {
 describe("ATTACK 1: entitlement.json modification (tamper plan_id)", () => {
   it("DENIES: upgrade plan_id after signing", () => {
     const stored = JSON.parse(fs.readFileSync(p.join(testDir, "entitlement.json"), "utf-8"));
-    stored.payload.plan_id = "enterprise";
+    stored.payload.plan_id = "private";
     fs.writeFileSync(p.join(testDir, "entitlement.json"), JSON.stringify(stored, null, 2));
 
     const r = checkEntitlement({
@@ -343,7 +343,7 @@ describe("ATTACK 6: gate-state restoration (replay old last_validated_at)", () =
   it("DENIES: gate-state cannot grant access where payload itself is broken", () => {
     // Tamper with entitlement (which invalidates signature), but keep gate-state.
     const stored = JSON.parse(fs.readFileSync(p.join(testDir, "entitlement.json"), "utf-8"));
-    stored.payload.plan_id = "enterprise";
+    stored.payload.plan_id = "private";
     fs.writeFileSync(p.join(testDir, "entitlement.json"), JSON.stringify(stored, null, 2));
     writeGateState(testDir, {
       latest_observed_at: Date.now(),
@@ -490,7 +490,7 @@ describe("ATTACK 11: legacy unbound entitlement (pre-1.3.0, no installation_id)"
     const expires = new Date(now.getTime() + 30 * 24 * 3600 * 1000);
     const legacyPayload = {
       entitlement_id: ALICE_ENT,
-      plan_id: "pro",
+      plan_id: "open",
       features: ["autonomous-coding"],
       max_devices: 3,
       issued_at: now.toISOString(),
@@ -510,7 +510,7 @@ describe("ATTACK 11: legacy unbound entitlement (pre-1.3.0, no installation_id)"
     const expires = new Date(now.getTime() + 30 * 24 * 3600 * 1000);
     const legacyPayload = {
       entitlement_id: ALICE_ENT,
-      plan_id: "pro",
+      plan_id: "open",
       features: ["autonomous-coding"],
       max_devices: 3,
       issued_at: now.toISOString(),
@@ -687,10 +687,17 @@ describe("ATTACK 18: offline execution after expiry", () => {
     assert.equal(r.state, GateState.EXPIRED);
   });
 
-  it("DENIES: offline-grace constants are zero in v1.3.0 (no implicit grace)", () => {
+  it("DENIES: offline grace is bounded (7 days) and requires a prior online validation", () => {
+    // v1.3.0 shipped OFFLINE_GRACE=0, which made the entitlement server a hard
+    // single point of failure for paid customers. v1.3.1+ allows a bounded
+    // 7-day grace measured from the last SUCCESSFUL ONLINE validation:
+    //  - no prior validation  -> SERVER_UNREACHABLE (fail closed)
+    //  - grace elapsed        -> SERVER_UNREACHABLE (fail closed)
+    //  - within grace         -> OFFLINE_GRACE, signed entitlement expiry still applies
+    // Expiry itself is always enforced by the gate (ATTACK 18, first case).
     const { OFFLINE_GRACE_DAYS, OFFLINE_GRACE_MS } = require("../src/entitlement/gate");
-    assert.equal(OFFLINE_GRACE_DAYS, 0);
-    assert.equal(OFFLINE_GRACE_MS, 0);
+    assert.equal(OFFLINE_GRACE_DAYS, 7);
+    assert.equal(OFFLINE_GRACE_MS, 7 * 24 * 60 * 60 * 1000);
   });
 });
 
@@ -705,7 +712,7 @@ describe("ATTACK 19: state recovery after restart", () => {
 
     // Simulate restart: tamper with file on disk.
     const stored = JSON.parse(fs.readFileSync(p.join(testDir, "entitlement.json"), "utf-8"));
-    stored.payload.plan_id = "enterprise";
+    stored.payload.plan_id = "private";
     fs.writeFileSync(p.join(testDir, "entitlement.json"), JSON.stringify(stored, null, 2));
 
     // Second boot (new process → fresh load from disk).

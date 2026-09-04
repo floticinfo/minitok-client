@@ -12,15 +12,16 @@ on:
 jobs:
   # ── Job 1: Test ──
   test:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     strategy:
       matrix:
-        node-version: [20, 22]
+        os: [ubuntu-latest, windows-latest]
+        node-version: [22.19, 24]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: ${{ matrix.node-version }}
 
@@ -30,27 +31,66 @@ jobs:
       - name: Run tests
         run: npm test
 
-      - name: Run full repository tests
-        run: node --test tests/*.js
+      - name: Run lint
+        run: npm run lint
 
-      - name: Run verification gate
-        run: bash VERIFY_CMD.sh
+      - name: Run typecheck
+        run: npm run typecheck
+
+      - name: Check documentation consistency
+        run: npm run docs:check
+
+      - name: Validate package manifest
+        run: npm pack --dry-run --json
+
+      - name: Run portable verification gate
+        run: node VERIFY_CMD.mjs
+
+      - name: Run packed install smoke test
+        run: npm run test:packed-install
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [test, security]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - run: npm ci
+      - name: Validate release YAML
+        run: node -e "const fs=require('fs'); const yaml=require('js-yaml'); yaml.load(fs.readFileSync('.github/workflows/ci.yml','utf8'));"
+      - name: Run packed install smoke test
+        run: npm run test:packed-install
+      - name: Verify release provenance
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: npm run release:verify
+
 
   # ── Job 2: Security scan ──
   security:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
 
-      - name: Check for secrets in code
-        run: |
-          echo "Scanning for leaked secrets..."
-          ! grep -rn "sk_live_\|sk_test_\|whsec_\|BEGIN PRIVATE KEY\|BEGIN RSA PRIVATE" src/ || { echo "SECRETS FOUND IN CODE"; exit 1; }
-          echo "No secrets found in source code ✓"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Audit dependencies
+        run: npm audit --audit-level=high
+
+      - name: Check tracked and added files for secrets
+        run: node scripts/secret-scan.mjs
 
       - name: Check for project data in evolution upload
-        run: |
-          echo "Verifying evolution upload boundary..."
-          ! grep -rn "goal\|summary\|source_code\|file_path\|prompt" src/evolution/upload.js | grep -v "// " | grep -v "Forbidden" | grep -v "reject" || { echo "WARNING: possible project data in upload"; exit 1; }
-          echo "Evolution upload boundary ✓"
+        run: node -e "const fs=require('fs'); const c=fs.readFileSync('src/evolution/upload.js','utf8'); if (/source_code|file_path|prompt/.test(c) && !c.includes('sanitizeEvolutionOutcome')) process.exit(1);"

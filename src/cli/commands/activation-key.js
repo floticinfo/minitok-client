@@ -7,9 +7,8 @@
  * plaintext activation key (exactly once) for a Dodo subscription payment.
  */
 
-const https = require("https");
-const http = require("http");
 const { resolveServerUrl } = require("./server-config");
+const { postJson } = require("../../core/http");
 const { loadCustomerToken } = require("../../auth/customer-token");
 
 /**
@@ -64,32 +63,7 @@ async function cmdActivationKey(opts) {
 }
 
 function _httpPost(urlString, body, headers) {
-  return new Promise((resolve, reject) => {
-    const url = new URL(urlString);
-    const isHttps = url.protocol === "https:";
-    const mod = isHttps ? https : http;
-    const payload = JSON.stringify(body);
-    const req = mod.request({
-      hostname: url.hostname,
-      port: url.port || (isHttps ? 443 : 80),
-      path: url.pathname,
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(payload), ...headers },
-      timeout: 30000,
-    }, (res) => {
-      let data = "";
-      res.on("data", (c) => (data += c));
-      res.on("end", () => {
-        let parsed = null;
-        try { parsed = JSON.parse(data); } catch {}
-        resolve({ ok: res.statusCode >= 200 && res.statusCode < 300, status: res.statusCode, body: parsed });
-      });
-    });
-    req.on("error", reject);
-    req.on("timeout", () => { req.destroy(); reject(new Error("Request timed out")); });
-    req.write(payload);
-    req.end();
-  });
+  return postJson(urlString, body, 30000, headers);
 }
 
 module.exports = { cmdActivationKey };

@@ -9,6 +9,7 @@
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
+
 const { setOwnerOnlyPermissions } = require("../utils/file-permissions");
 
 const DEFAULT_ENTITLEMENT_DIR = path.join(os.homedir(), ".minitok", "entitlement");
@@ -59,11 +60,18 @@ class EntitlementStore {
       ...artifact,
       saved_at: new Date().toISOString(),
     };
-    const tmp = this._filePath + ".tmp";
-    fs.writeFileSync(tmp, JSON.stringify(record, null, 2), "utf-8", { mode: 0o600 });
-    fs.renameSync(tmp, this._filePath);
-    // P3-01: Set owner-only permissions (POSIX + Windows ACL)
-    setOwnerOnlyPermissions(this._filePath);
+    const tmp = `${this._filePath}.tmp.${process.pid}.${Date.now()}.${require("node:crypto").randomBytes(8).toString("hex")}`;
+    try {
+      fs.writeFileSync(tmp, JSON.stringify(record, null, 2), { encoding: "utf-8", flag: "wx", mode: 0o600 });
+      if (process.platform === "win32") {
+        try { fs.unlinkSync(this._filePath); } catch (error) { if (error.code !== "ENOENT") throw error; }
+      }
+      fs.renameSync(tmp, this._filePath);
+      setOwnerOnlyPermissions(this._filePath);
+    } catch (error) {
+      try { fs.unlinkSync(tmp); } catch {}
+      throw error;
+    }
   }
 
   /**

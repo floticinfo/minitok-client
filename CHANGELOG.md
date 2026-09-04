@@ -1,5 +1,43 @@
 # Changelog
 
+## 1.3.2 - 2026-09-04
+
+### Critical fixes
+
+- Fixed (critical): the deterministic verification gate now runs the customer's own repo-local `VERIFY_CMD.mjs` — previously any `.mjs` gate executed the bundled `scripts/verify.mjs`, which tests minitok itself and approved pipeline changes with a vacuous green gate.
+- Fixed: isolated workspaces layer ALL uncommitted work (staged + unstaged, binary files included via `diff HEAD --binary`); a failed layering is now a hard error instead of silently running against stale code.
+- Reliability: runs that end in REJECT/verification-failure now preserve the generated diff at `.minitok/last-run.patch` instead of discarding paid output with the temp clone.
+- Fixed: interrupted-contract cleanup now heals the REAL repository's contract (previously only touched the disposable clone's copy).
+- Security: removed the `minitok_dev_mode` entitlement gate bypass. Paid execution now always requires a valid entitlement; test suites use the programmatic `skipEntitlementCheck` option.
+
+### Security & privacy
+
+- Privacy: `last-run.json` is now sanitized with the same redaction rules as run evidence (plans/review LLM output previously persisted unredacted).
+- Security: removed the non-functional AWS IAM (SigV4) auth stub — it shipped a `Credential=`-only header that cannot authenticate. `auth.type: iam` now fails with a clear error and an OpenAI-compatible-proxy workaround.
+- Security: customer token files now receive owner-only permissions/ACLs after atomic replacement on Windows and POSIX.
+- Packaging: LICENSE file restored to the tarball file list; `POLICY.md`/`DATA_CLASSIFICATION.md` ship in the tarball; stale `.tgz` archives removed; `.gitignore` typo fixed (`_last_run.json` → `last-run.json`); EULA referenced from README and shipped.
+
+### Reliability
+
+- Availability: offline grace is activated after a successful online validation for a bounded 7-day window (fail-closed before the first validation and after grace elapses; signed-expiry enforcement unchanged).
+- Hardened: LLM HTTP calls retry 429/5xx and timeouts with exponential backoff honoring `Retry-After` (capped by the retry ceiling so a provider cannot suspend a paid run for hours); `execution.max_retries`, `retry_backoff_sec`, `retry_max_sec` consumed; `roles.<role>.fallback_model` retries failed completions on the fallback model.
+- Reliability: `HTTPS_PROXY`/`HTTP_PROXY`/`NO_PROXY` are honored for LLM providers, entitlement validation, evolution uploads, and the update check; streamed responses are capped at 2MB instead of relying only on Content-Length.
+- Reliability: update-check abort timers are unref'd; its cache writes are atomic; entitlement `status` shows plan/expiry again; run-lock stale reclaim is bounded (no infinite recursion on undeletable locks).
+- Diagnostics: `minitok doctor` now checks entitlement state and installation-token presence, and gates on "at least one LLM provider configured" instead of failing single-provider customers.
+- Fixed: `minitok status`/`doctor` now report the real package version (single source of truth in package.json).
+- Fixed: run evidence now propagates from the isolated workspace back to the real repository on the default run path (`.minitok/evidence/runs/` no longer destroyed with the temp clone).
+- Added: workspace run lock — concurrent `minitok run` invocations fail fast with a clear error; stale locks from crashed processes are reclaimed (bounded); interrupted runs mark the real repository's contract `interrupted` instead of leaving it `running` forever.
+- Added: optional USD cost tracking via `providers.<name>.pricing` (`input_per_mtok`/`output_per_mtok`) shown in the run summary and recorded in the knowledge store.
+- Windows: the verification gate no longer hard-requires Git Bash — WSL is detected explicitly and the portable `VERIFY_CMD.mjs` gate is used instead; without either it fails with actionable guidance. CI runs the full test matrix on `windows-latest` with lint enforced.
+
+### Tests & tooling
+
+- Tooling: replaced the syntax-only lint with ESLint (`npm run lint`), fixing all flagged issues in `src/`.
+- Packaging: the published tarball contains the runtime, CLI, release verification scripts, and documentation listed by the package manifest; repository tests remain development-only.
+- Tests: made the client/server contract test self-contained (no sibling repository dependency on fresh clones or CI).
+- Tests: `npm test` now uses recursive test discovery (`node --test`), independent of shell glob expansion on supported Node versions and Windows.
+- Tests: updated stale budget-default assertions to match the unlimited-with-hard-limits configuration.
+
 ## 1.3.1 - 2026-08-30
 
 - Added role-specific provider selection with default-provider fallback.

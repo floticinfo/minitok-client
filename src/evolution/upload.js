@@ -14,11 +14,10 @@
  * If ANY step fails → NO NETWORK REQUEST.
  */
 
-const https = require("https");
-const http = require("http");
-const { checkEntitlement } = require("../entitlement/gate");
+const { authorizeEntitlement } = require("../entitlement/policy");
 const { sanitizeEvolutionOutcome } = require("./sanitize");
 const { EvolutionOptIn } = require("./optin");
+const { canUploadTelemetry } = require("./telemetry-policy");
 
 /**
  * Upload a sanitized evolution outcome to the server.
@@ -31,25 +30,21 @@ const { EvolutionOptIn } = require("./optin");
  * @param {object} [options._optIn] - override EvolutionOptIn for testing
  * @param {Function} [options._httpPost] - override HTTP client for testing
  * @param {Function} [options._sanitizer] - override sanitizer for testing
- * @returns {{ sent: boolean, reason?: string }}
+ * @returns {Promise<{ sent: boolean, reason?: string, policy?: object }>}
  */
 async function uploadEvolutionOutcome(outcome, options = {}) {
   // Step 1: Entitlement gate (fail-closed)
-  const entitlement = options._entitlementCheck || checkEntitlement();
+  const entitlement = options._entitlementCheck || await authorizeEntitlement({ feature: "evolution_upload" });
   if (!entitlement.allowed) {
     return { sent: false, reason: `Entitlement check failed: ${entitlement.state}` };
   }
 
   // Step 2: Check "evolution_upload" feature
-  const features = entitlement.entitlement?.features || [];
-  if (!features.includes("evolution_upload")) {
-    return { sent: false, reason: "Feature 'evolution_upload' not in entitlement" };
-  }
-
   // Step 3: User opt-in (fail-closed: default OFF)
   const optIn = options._optIn || new EvolutionOptIn();
-  if (!optIn.isEnabled()) {
-    return { sent: false, reason: "Evolution upload not opted-in by user" };
+  const policy = canUploadTelemetry(entitlement, optIn.isEnabled());
+  if (!policy.allowed) {
+    return { sent: false, reason: `evolution_upload: ${policy.reason || "not authorized"}`, policy: policy.policy };
   }
 
   // Step 4: Sanitize payload (strict allowlist)
@@ -65,12 +60,20 @@ async function uploadEvolutionOutcome(outcome, options = {}) {
   if (!serverUrl || !token) {
     return { sent: false, reason: "Server URL or token not configured" };
   }
+  let parsedServerUrl;
+  try {
+    parsedServerUrl = new URL(serverUrl);
+    if (parsedServerUrl.protocol !== "https:") throw new Error("HTTPS is required");
+    if (parsedServerUrl.username || parsedServerUrl.password || parsedServerUrl.search || parsedServerUrl.hash) throw new Error("Server URL is invalid");
+  } catch {
+    return { sent: false, reason: "Server URL must be a valid HTTPS URL" };
+  }
 
   // Step 6: Network request (ONLY after all checks pass)
   const httpPost = options._httpPost || _defaultHttpPost;
   try {
     const response = await httpPost(
-      serverUrl + "/v1/evolution/telemetry",
+      parsedServerUrl.origin + parsedServerUrl.pathname.replace(/\/+$/, "") + "/v1/evolution/telemetry",
       result.payload,
       { Authorization: "Bearer " + token }
     );
@@ -84,32 +87,8 @@ async function uploadEvolutionOutcome(outcome, options = {}) {
 }
 
 function _defaultHttpPost(urlString, body, headers) {
-  return new Promise((resolve, reject) => {
-    const url = new URL(urlString);
-    const isHttps = url.protocol === "https:";
-    const mod = isHttps ? https : http;
-    const payload = JSON.stringify(body);
-    const req = mod.request({
-      hostname: url.hostname,
-      port: url.port || (isHttps ? 443 : 80),
-      path: url.pathname,
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(payload), ...headers },
-      timeout: 10000,
-    }, (res) => {
-      let data = "";
-      res.on("data", (c) => (data += c));
-      res.on("end", () => {
-        let parsed = null;
-        try { parsed = JSON.parse(data); } catch {}
-        resolve({ ok: res.statusCode >= 200 && res.statusCode < 300, status: res.statusCode, body: parsed });
-      });
-    });
-    req.on("error", reject);
-    req.on("timeout", () => { req.destroy(); reject(new Error("Request timed out")); });
-    req.write(payload);
-    req.end();
-  });
+  const { postJson } = require("../core/http");
+  return postJson(urlString, JSON.stringify(body), 10000, headers);
 }
 
 module.exports = { uploadEvolutionOutcome };

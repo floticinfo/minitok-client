@@ -68,7 +68,7 @@ function registerKey(keyId, publicKeyPem) {
   try {
     crypto.createPublicKey(publicKeyPem);
   } catch (e) {
-    throw new Error(`Invalid public key for ${keyId}: ${e.message}`);
+    throw new Error(`Invalid public key for ${keyId}: ${e.message}`, { cause: e });
   }
   KEY_REGISTRY.set(keyId, publicKeyPem);
 }

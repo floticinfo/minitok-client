@@ -10,19 +10,20 @@ const { EntitlementService } = require("./entitlement");
 const { ObservationService } = require("./observations");
 
 function createRuntimeServices(options = {}) {
-  const knowledgePath = options.knowledgePath;
-  const entitlementDir = options.entitlementDir;
-  const auditPath = options.auditPath;
+  const runtimeDir = options.runtimeDir;
+  const knowledgePath = options.knowledgePath || (runtimeDir && require("path").join(runtimeDir, "knowledge.json"));
+  const entitlementDir = options.entitlementDir || (runtimeDir && require("path").join(runtimeDir, "entitlement"));
+  const auditPath = options.auditPath || (runtimeDir && require("path").join(runtimeDir, "audit.jsonl"));
 
   return {
     knowledge: new KnowledgeService(knowledgePath),
     analysis: new AnalysisService(knowledgePath),
     compact: new CompactService(),
-    evidence: new EvidenceService(),
+    evidence: new EvidenceService({ workspaceRoots: options.workspaceRoots || [], evidenceDirectory: options.evidenceDirectory }),
     workspace: new WorkspaceService(),
     audit: new AuditService(auditPath),
     entitlement: new EntitlementService(entitlementDir),
-    observation: new ObservationService(),
+    observation: new ObservationService({ storageDir: options.observationDir || (runtimeDir && require("path").join(runtimeDir, "observations")) }),
   };
 }
 

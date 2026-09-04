@@ -8,6 +8,7 @@ const npmArgs = (args) => process.platform === "win32" ? ["/d", "/s", "/c", `npm
 try {
   execFileSync(npm, npmArgs(["test"]), { cwd: root, stdio: "inherit" });
   execFileSync(npm, npmArgs(["run", "lint"]), { cwd: root, stdio: "inherit" });
+  execFileSync(npm, npmArgs(["run", "typecheck"]), { cwd: root, stdio: "inherit" });
 } catch (error) {
   process.exit(typeof error.status === "number" ? error.status : 1);
 }

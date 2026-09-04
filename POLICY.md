@@ -1,217 +1,137 @@
 # minitok Privacy & Entitlement Policy
 
 > **Document type:** Technical policy — data processing, consent, and entitlement architecture
-> **Version:** 1.0.0
-> **Last updated:** 2026-08-28
-> **Applies to:** `@flotic/minitok` v1.3.1+
+> **Version:** 1.1.0
+> **Last updated:** 2026-09-04
+> **Applies to:** `@flotic/minitok` v1.3.2 and compatible `minitok-server` v0.1.0 API
 
----
+This is a technical description of current implementation behavior. It is not a privacy notice, data-processing agreement, or legal advice. Legal review is required before publication as a legal policy.
 
 ## 1. Scope
 
-This document defines the technical privacy and entitlement policies enforced by the minitok client and server. It covers:
-
-- What data minitok processes
-- What data is transmitted to minitok servers
-- What data stays local
-- How consent is managed
-- How entitlement relates to (and differs from) privacy consent
-- What enforcement mechanisms exist
-
----
+This document describes data processed by the client and server, client privacy controls, entitlement checks, telemetry boundaries, and enforcement mechanisms.
 
 ## 2. Core Principles
 
-### 2.1 Privacy by Default
+### 2.1 Privacy by default
 
-All telemetry and analytics features are **OFF by default**. Users must explicitly opt in.
+Telemetry upload is disabled unless the user explicitly enables it.
 
-### 2.2 Fail-Closed
+### 2.2 Fail closed
 
-If any privacy or entitlement state cannot be determined, the system **denies** the operation. No data is transmitted when the policy state is unknown.
+Unknown consent, entitlement, feature, credential, schema, or server-validation state blocks telemetry upload.
 
-### 2.3 Data Minimization
+### 2.3 Data minimization
 
-Only data explicitly required for service operation is transmitted to minitok servers. All user content stays local.
+The minitok server accepts licensing, billing, account, installation, and allowlisted telemetry data required by its implementation. User prompts, source code, file contents, repository metadata, LLM content, and credentials are not sent to the minitok server by the telemetry client.
 
-### 2.4 Entitlement ≠ Privacy Consent
+### 2.4 Entitlement is separate from consent
 
-Having a valid subscription (entitlement) does **not** imply consent to data transmission. These are separate axes:
-
-- **Entitlement** controls feature access
-- **Privacy consent** controls whether data is actually transmitted
-
-Both must be satisfied for telemetry upload.
+A subscription or entitlement does not imply telemetry consent. Entitlement controls feature access; consent controls telemetry transmission. Both are required for telemetry upload.
 
 ## 3. Data Classification Summary
 
-| Classification | Description | Server Transfer |
-|----------------|-------------|-----------------|
-| LOCAL_ONLY | User content (prompts, code, knowledge, etc.) | **NEVER** |
-| TELEMETRY | Sanitized aggregate usage metrics | Only with **entitlement + feature + opt-in** |
-| LICENSE | Entitlement lifecycle data | Required for activation |
-| BILLING | Subscription/payment data | Required for service operation |
-| SECRET | API keys, signing keys, tokens | **NEVER to minitok server** |
+| Class | Label | Current boundary |
+|---|---|---|
+| D0 | PUBLIC | Public product and operational information |
+| D1 | LICENSE | Activation and entitlement lifecycle data sent to the minitok server |
+| D2 | BILLING | Account, subscription, and payment-event data processed by the minitok server and payment provider |
+| D3 | TELEMETRY | Allowlisted workflow metrics sent only after all upload gates pass |
+| D4 | LOCAL_ONLY | User content and workflow content not sent to the minitok server |
+| D5 | SECRET | API keys, private keys, passwords, and token values; not sent to the minitok server |
 
-See [DATA_CLASSIFICATION.md](./DATA_CLASSIFICATION.md) for the full matrix.
-
----
+See [DATA_CLASSIFICATION.md](./DATA_CLASSIFICATION.md) for the field-level inventory.
 
 ## 4. Privacy Consent Model
 
-### 4.1 Consent States
+### 4.1 Consent states
 
 | State | Meaning | Behavior |
-|-------|---------|----------|
-| UNKNOWN | Consent not yet established | **Fail-closed: treat as OFF** |
-| OFF | Explicitly disabled (default) | No telemetry transmitted |
-| ON | Explicitly enabled | Telemetry may be transmitted (subject to other gates) |
+|---|---|---|
+| UNKNOWN | Consent cannot be read or has not been established | Treat as OFF |
+| OFF | Explicitly disabled or default state | No telemetry upload |
+| ON | Explicitly enabled | Upload may proceed only after the other gates pass |
 
-### 4.2 Consent Storage
+### 4.2 Consent storage and controls
 
-Consent is stored in `~/.minitok/evolution/optin.json` with owner-only file permissions.
-
-### 4.3 Consent Management
-
-Users manage consent via CLI:
+Consent is stored in `~/.minitok/evolution/optin.json` with owner-only permissions. Users can run:
 
 ```bash
-minitok evolution status   # View current consent state
-minitok evolution enable   # Enable telemetry (opt-in)
-minitok evolution disable  # Disable telemetry (opt-out)
+minitok evolution status
+minitok evolution enable
+minitok evolution disable
 ```
-
----
 
 ## 5. Entitlement Model
 
-### 5.1 Plan Tiers
+### 5.1 Current plan
 
-| Plan | Description | Features |
-|------|-------------|----------|
-| FREE | Local execution only | Basic CLI, local knowledge, no telemetry |
-| PRO | Commercial license | Full CLI, entitlement, evolution upload (with consent) |
-| *Future: ENTERPRISE/TEAM* | Organizational management | Centralized administration, policy-controlled telemetry |
+The server seed and purchasable-plan mapping currently define `pro`. Other plan names in historical reports or experimental code are not customer-facing plan availability.
 
-### 5.2 Feature Flags
+### 5.2 Feature flags
 
-Features are included in the signed entitlement payload:
+The signed entitlement and server-side plan determine feature access. `evolution_upload` is required for telemetry and does not override user consent.
 
-- `basic_features` — core CLI functionality
-- `evolution_upload` — telemetry upload capability (still requires user consent)
+### 5.3 Verification chain
 
-### 5.3 Entitlement Verification Chain
-
-```
-Entitlement artifact (signed Ed25519)
-  → Cryptographically verify signature
-  → Check expiration
-  → Verify installation binding
-  → Check features for requested capability
-  → Check privacy consent
-  → Execute operation
+```text
+Signed entitlement
+  -> verify Ed25519 signature
+  -> check expiration
+  -> verify installation binding
+  -> check requested feature
+  -> check privacy consent for telemetry
+  -> execute operation
 ```
 
----
+## 6. Telemetry Upload Gates
 
-## 6. Upload Gate Chain
+All conditions must pass:
 
-For telemetry upload, ALL of these conditions must be met:
+1. The entitlement is valid.
+2. The entitlement or server plan authorizes `evolution_upload`.
+3. Local consent is ON.
+4. The client sanitizer accepts the payload.
+5. A server URL and installation token are configured.
+6. The server validates the bearer token, customer, subscription, plan, and feature.
+7. The server accepts the exact allowlisted schema.
+8. The telemetry record is stored successfully.
 
-```
-1. Entitlement valid?        → Gate check
-2. Feature present?          → evolution_upload in features[]
-3. User opt-in?              → optin.json enabled
-4. Sanitizer pass?           → Only ALLOWED_FIELDS
-5. Server URL configured?    → resolveServerUrl() non-null
-6. Installation token set?   → installation-token.json
-7. Server validates token?   → JWT → customer → subscription → plan → features
-8. Server validates schema?  → Only ALLOWED_BODY_FIELDS
-9. Database insert?          → evolution_telemetry table
-```
+If any condition fails, the client does not send telemetry or the server does not store it.
 
-If ANY step fails → **NO DATA TRANSMITTED**.
+## 7. Telemetry Payload
 
----
+The current client and server allow exactly these fields:
 
-## 7. What NEVER Leaves the Machine
+- Required: `status`, `cycles`, `duration_ms`, `files_changed`
+- Optional: `total_tokens`, `failure_category`
+- `failure_category` values: `lint`, `test`, `validation`, `type_error`, `timeout`, `api_error`, `unknown`
 
-The following data is **never** transmitted to minitok servers:
+No prompt, source code, path, repository name, LLM request or response, credential, or free-form error message is part of this allowlist.
 
-- User prompts and task descriptions
-- Source code from repositories
-- File contents
-- Command output and terminal output
-- LLM-generated code and text
-- Knowledge entries and embeddings
-- Task goals and summaries
-- Agent reasoning traces and decision records
-- Repository names, paths, and metadata
-- LLM request/response content
-- Error messages containing file paths or content
-- API keys and credentials
+## 8. Data That the Telemetry Boundary Does Not Send
 
-This is enforced by:
-1. The upload sanitizer (strict allowlist)
-2. The upload gate (multiple independent checks)
----
+The telemetry upload boundary excludes user prompts, task descriptions, source code, file contents, command output, terminal output, generated code or text, knowledge entries, repository names and paths, agent context or reasoning, LLM request/response content, path-bearing error messages, API keys, and credentials. Configured LLM providers may receive workflow data required by the user's configuration; that is a separate provider relationship and is not a minitok-server transfer.
 
-## 8. Enforcement Architecture
+## 9. Enforcement Architecture
 
-### Client-Side
+| Boundary | Implementation |
+|---|---|
+| Client entitlement | `src/entitlement/gate.js` and related verification modules |
+| Client consent | `src/evolution/optin.js` and `src/evolution/privacy.js` |
+| Client allowlist | `src/evolution/sanitize.js` |
+| Client network gate | `src/evolution/upload.js` |
+| Server authentication | `src/middleware/auth.js` |
+| Server subscription and feature checks | `src/services/evolution-telemetry.js` |
+| Server schema and unknown-field rejection | `src/api/evolution-telemetry.js` |
+| Server telemetry storage | `evolution_telemetry` schema and database adapter |
 
-| Layer | Module | Enforcement |
-|-------|--------|-------------|
-| Entitlement Gate | `entitlement/gate.js` | Ed25519 signature, expiration, installation binding, clock rollback |
-| Feature Check | `evolution/upload.js` | `evolution_upload` in entitlement features |
-| Privacy Consent | `evolution/optin.js` | Local opt-in file, default OFF |
-| Sanitizer | `evolution/sanitize.js` | Strict allowlist, unknown field rejection |
-| Network | `evolution/upload.js` | HTTPS POST only after all checks pass |
+## 10. Operator and Legal Decisions Required
 
-### Server-Side
+- TODO: Legal owner must approve the public privacy notice, legal bases, jurisdictions, controller/processor roles, international-transfer wording, and rights-response process.
+- TODO: Operator must confirm production retention periods for account, billing, installation, audit, and backup data; the 90-day telemetry cleanup is an implementation setting, not a complete retention policy.
+- TODO: Operator must confirm the authoritative support/contact address and effective date for public legal documents.
 
-| Layer | Module | Enforcement |
-|-------|--------|-------------|
-| Auth | `middleware/auth.js` | Bearer JWT verification, customer identity extraction |
-| Subscription | `services/evolution-telemetry.js` | Server-side subscription lookup |
-| Schema | `api/evolution-telemetry.js` | Fastify schema + explicit unknown field rejection |
-| DB Schema | `db/schema/index.js` | Only telemetry columns, no content storage |
-| Rate Limiting | `app.js` | In-memory rate limiting per IP |
+## 11. Future Changes
 
----
-
-## 9. User Controls
-
-| Command | Action |
-|---------|--------|
-| `minitok evolution status` | View current privacy consent state |
-| `minitok evolution enable` | Enable telemetry (opt-in) |
-| `minitok evolution disable` | Disable telemetry (opt-out) |
-| `minitok status` | View entitlement and feature status |
-| `minitok doctor` | Check environment and configuration |
-
----
-
-## 10. Future Considerations
-
-### Cloud Knowledge Sync
-Would require new classification, separate consent, independent feature flag, and new upload boundary.
-
-### Enterprise/Team Plans
-Organization-level policy must not override LOCAL_ONLY classification.
-
-### Diagnostic Data
-Must pass through the same classification gate, never include user content, and have explicit opt-in. Debug flags must never bypass privacy gates.
-3. The server schema (only known fields accepted)
-```
-
-### 4.4 Consent Independence
-
-Consent is independent of entitlement:
-- Pro subscription + consent=OFF → no telemetry
-- consent=ON + Free plan → no telemetry (feature not available)
-- consent=ON + expired subscription → no telemetry
-
-### 2.5 Defense in Depth
-
-Multiple independent layers enforce the privacy boundary (see Section 9).
+Cloud knowledge synchronization, diagnostic uploads, and organization-wide policy controls require a new classification and boundary review before implementation.

@@ -114,19 +114,15 @@ async function cmdMigrate(repoPath, name) {
     console.log(`VERIFY_CMD.mjs already exists, skipping`);
   }
 
-  // Create .gitignore entries if needed
   const gitignorePath = path.join(resolved, ".gitignore");
   const entries = [".minitok/", "minitok-evidence/"];
-  let gitignoreContent = "";
-  if (fs.existsSync(gitignorePath)) {
-    gitignoreContent = fs.readFileSync(gitignorePath, "utf-8");
-  }
-  for (const entry of entries) {
-    if (!gitignoreContent.includes(entry)) {
-      gitignoreContent += `\n${entry}`;
-    }
-  }
-  fs.writeFileSync(gitignorePath, gitignoreContent.trim() + "\n", "utf-8");
+  const existing = fs.existsSync(gitignorePath) ? fs.readFileSync(gitignorePath, "utf-8") : "";
+  const lines = existing.split(/\r?\n/);
+  for (const entry of entries) if (!lines.includes(entry)) lines.push(entry);
+  const gitignoreContent = lines.filter((line, index, all) => line !== "" || index < all.length - 1).join("\n").replace(/\n*$/, "\n");
+  const tempGitignore = `${gitignorePath}.tmp.${process.pid}`;
+  fs.writeFileSync(tempGitignore, gitignoreContent, { encoding: "utf-8", flag: "wx" });
+  try { fs.renameSync(tempGitignore, gitignorePath); } catch (error) { try { fs.unlinkSync(tempGitignore); } catch {} throw error; }
 
   // Register workspace
   const wm = new WorkspaceManager();
@@ -143,7 +139,7 @@ async function cmdMigrate(repoPath, name) {
     }
   }
 
-  console.log(`\n✅ Repository initialized as minitok workspace:`);
+  console.log(`\n[ok] Repository initialized as minitok workspace:`);
   console.log(`  name:        ${ws.name}`);
   console.log(`  repository:  ${ws.repository_root}`);
   console.log(`  project:     ${ws.project_type}`);

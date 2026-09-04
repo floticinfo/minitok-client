@@ -2,7 +2,7 @@
 
 const fs = require("fs");
 const path = require("path");
-const { execSync } = require("child_process");
+const { execFileSync } = require("child_process");
 
 function collectEvidence(repoRoot, options = {}) {
   const evidence = { timestamp: new Date().toISOString(), tests: {}, lint: {}, types: {} };
@@ -10,26 +10,42 @@ function collectEvidence(repoRoot, options = {}) {
   // Test evidence
   try {
     if (fs.existsSync(path.join(repoRoot, "package.json"))) {
-      const output = execSync("npm test 2>&1", { cwd: repoRoot, encoding: "utf-8", timeout: 120000, stdio: ["pipe", "pipe", "pipe"] });
+      const output = execFileSync(process.platform === "win32" ? "npm.cmd" : "npm", ["test"], { cwd: repoRoot, encoding: "utf-8", timeout: 120000, stdio: ["ignore", "pipe", "pipe"] });
       evidence.tests = { status: "passed", output: output.slice(-2000) };
     } else if (fs.existsSync(path.join(repoRoot, "pyproject.toml"))) {
-      const output = execSync("python -m pytest tests/ -q --tb=short 2>&1", { cwd: repoRoot, encoding: "utf-8", timeout: 120000, stdio: ["pipe", "pipe", "pipe"] });
+      const output = execFileSync("python", ["-m", "pytest", "tests/", "-q", "--tb=short"], { cwd: repoRoot, encoding: "utf-8", timeout: 120000, stdio: ["ignore", "pipe", "pipe"] });
       evidence.tests = { status: output.includes("failed") ? "failed" : "passed", output: output.slice(-2000) };
     } else {
       evidence.tests = { status: "skipped", reason: "No test runner detected" };
     }
   } catch (e) {
-    evidence.tests = { status: "error", error: e.message };
+    evidence.tests = { status: "error", error: e.message, output: `${e.stdout || ""}${e.stderr || ""}`.slice(-2000) };
   }
 
   // Lint evidence
   try {
     if (fs.existsSync(path.join(repoRoot, "package.json"))) {
-      execSync("npx eslint . --quiet 2>&1", { cwd: repoRoot, encoding: "utf-8", timeout: 60000 });
-      evidence.lint = { status: "clean" };
+      const npm = process.platform === "win32" ? "npm.cmd" : "npm";
+      const pkg = JSON.parse(fs.readFileSync(path.join(repoRoot, "package.json"), "utf8"));
+      if (!pkg.scripts || typeof pkg.scripts.lint !== "string" || pkg.scripts.lint.trim() === "") {
+        evidence.lint = { status: "skipped", reason: "No lint script detected" };
+      } else {
+        const output = execFileSync(npm, ["run", "lint", "--", "--quiet"], { cwd: repoRoot, encoding: "utf-8", timeout: 60000, stdio: ["ignore", "pipe", "pipe"] });
+        evidence.lint = { status: "clean", output: output.slice(-2000) };
+      }
     }
-  } catch {
-    evidence.lint = { status: "issues_found" };
+  } catch (e) {
+    evidence.lint = { status: "issues_found", output: `${e.stdout || ""}${e.stderr || ""}`.slice(-2000) };
+  }
+
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(repoRoot, "package.json"), "utf8"));
+    if (pkg.scripts && pkg.scripts.typecheck) {
+      const output = execFileSync(process.platform === "win32" ? "npm.cmd" : "npm", ["run", "typecheck"], { cwd: repoRoot, encoding: "utf-8", timeout: 120000, stdio: ["ignore", "pipe", "pipe"] });
+      evidence.types = { status: "passed", output: output.slice(-2000) };
+    } else evidence.types = { status: "skipped", reason: "No typecheck script detected" };
+  } catch (e) {
+    evidence.types = { status: "failed", output: `${e.stdout || ""}${e.stderr || ""}`.slice(-2000) };
   }
 
   return evidence;

@@ -1,5 +1,7 @@
 "use strict";
 
+const { HIGH_COMPLEXITY_CATEGORIES } = require("./analyzer");
+
 /**
  * Adaptive policy engine — recommends execution policy adjustments.
  *
@@ -69,4 +71,135 @@ function recommendPolicy(patterns, currentPolicy = {}) {
   return { recommended, reasons };
 }
 
-module.exports = { recommendPolicy, _MAX_TIMEOUT, _MAX_CYCLES };
+/**
+ * Default model-tier escalation chain, ordered from cheapest to most capable.
+ * Used to step a role up one tier on repeated failure, or to jump straight
+ * to the "reasoning" tier for high-complexity errors.
+ */
+const DEFAULT_TIER_CHAIN = ["fast", "balanced", "flagship", "frontier", "reasoning"];
+
+/**
+ * EscalationEngine — model escalation + token hard guardrail.
+ *
+ * Mirrors Python version's orchestrator/escalation.py:
+ * after N successive failures (or a single high-complexity error) the
+ * work adapter is switched to a higher-tier model. When the token
+ * hard limit is approached the loop is stopped and escalated to a human
+ * rather than merely compressing context and retrying.
+ */
+class EscalationEngine {
+  constructor(options = {}) {
+    this.failureThreshold = Number(options.failureThreshold) || 2;
+    this.tokenHardLimit = Number(options.tokenHardLimit) || 2_000_000;
+    this.tokenStopRatio = Number(options.tokenStopRatio) || 0.9;
+    this.tierChain = options.tierChain || DEFAULT_TIER_CHAIN;
+    /** Explicit per-role escalation models (config-driven override). */
+    this.escalationModels = options.escalationModels || {};
+    /** (targetTier) => modelId | null. Bound to the work provider by the loop. */
+    this.modelResolver = options.modelResolver || (() => null);
+    this._state = new Map();
+    /** Role whose adapter/model is escalated (typically "work" — the implementer). */
+    this.role = options.role || "work";
+  }
+
+  _ctx(goalKey) {
+    if (!this._state.has(goalKey)) {
+      this._state.set(goalKey, {
+        consecutiveFailures: 0,
+        tierIndex: 0,
+        escalated: false,
+        totalTokens: 0,
+        lastCategory: "unknown",
+      });
+    }
+    return this._state.get(goalKey);
+  }
+
+  reset(goalKey) {
+    this._state.delete(goalKey);
+  }
+
+  /** Hard guardrail: true when token usage is at/over the stop ratio. */
+  shouldStop(tokens) {
+    return tokens >= this.tokenHardLimit * this.tokenStopRatio;
+  }
+
+  /**
+   * Record a cycle's outcome and return the escalation decision.
+   * @param {string} goalKey
+   * @param {{ success: boolean, category?: string, tokens?: number }} outcome
+   * @returns {{ escalate: boolean, stop: boolean, humanEscalation: boolean, targetTier?: string, model?: string|null, reason?: string, stopReason?: string }}
+   */
+  recordCycleOutcome(goalKey, outcome = /** @type {{ success: boolean, category?: string, tokens?: number }} */ ({ success: false })) {
+    const ctx = this._ctx(goalKey);
+    ctx.lastCategory = outcome.category || "unknown";
+    ctx.totalTokens += outcome.tokens || 0;
+
+    // 1) Token hard guardrail — fires regardless of cycle success (beyond compression).
+    if (this.shouldStop(ctx.totalTokens)) {
+      return {
+        escalate: false,
+        stop: true,
+        humanEscalation: true,
+        reason: "token_exhausted",
+        stopReason: `Token hard limit approached (${ctx.totalTokens.toLocaleString()} tokens). Stopping and escalating to a human reviewer instead of compressing context and retrying.`,
+      };
+    }
+
+    if (outcome.success) {
+      ctx.consecutiveFailures = 0;
+      ctx.tierIndex = 0;
+      ctx.escalated = false;
+      return { escalate: false, stop: false, humanEscalation: false };
+    }
+
+    ctx.consecutiveFailures += 1;
+
+    // 2) Model escalation after N failures or on a high-complexity error.
+    const highComplexity = HIGH_COMPLEXITY_CATEGORIES.has(ctx.lastCategory);
+    const thresholdMet = ctx.consecutiveFailures >= this.failureThreshold;
+    if (!ctx.escalated && (thresholdMet || highComplexity)) {
+      const targetTier = highComplexity ? "reasoning" : this._stepUpTier(ctx.tierIndex);
+      const tierIndex = this.tierChain.indexOf(targetTier);
+      const model = this.resolveModel(this.role, targetTier);
+      ctx.tierIndex = tierIndex;
+      // Cap at the reasoning tier — do not escalate beyond it.
+      ctx.escalated = targetTier === "reasoning" || tierIndex >= this.tierChain.length - 1;
+      ctx.consecutiveFailures = 0; // re-evaluate after the next N failures
+      return {
+        escalate: true,
+        stop: false,
+        humanEscalation: false,
+        targetTier,
+        model,
+        reason: highComplexity
+          ? `High-complexity ${ctx.lastCategory} error — escalating to reasoning model tier.`
+          : `Repeated failures (≥${this.failureThreshold}) — escalating model tier → ${targetTier}.`,
+      };
+    }
+
+    return {
+      escalate: false,
+      stop: false,
+      humanEscalation: false,
+      reason: highComplexity ? `High-complexity ${ctx.lastCategory} flagged, awaiting escalation window.` : undefined,
+    };
+  }
+
+  _stepUpTier(currentIndex) {
+    return this.tierChain[Math.min(currentIndex + 1, this.tierChain.length - 1)];
+  }
+
+  /**
+   * Resolve a concrete model id for an escalation.
+   * Honors an explicit config-driven model, then the injected resolver
+   * (catalog-based by default). Returns null when no model is available,
+   * in which case the loop enables reasoning settings on the current provider.
+   */
+  resolveModel(role, targetTier) {
+    if (this.escalationModels[role]) return this.escalationModels[role];
+    return typeof this.modelResolver === "function" ? this.modelResolver(targetTier) : null;
+  }
+}
+
+module.exports = { recommendPolicy, EscalationEngine, DEFAULT_TIER_CHAIN, _MAX_TIMEOUT, _MAX_CYCLES };

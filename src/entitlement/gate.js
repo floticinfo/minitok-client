@@ -15,8 +15,12 @@ const { EntitlementStore } = require("./store");
 const { verifyEntitlement, EntitlementState } = require("./verify");
 const { setOwnerOnlyPermissions } = require("../utils/file-permissions");
 
-const OFFLINE_GRACE_DAYS = 0;
-const OFFLINE_GRACE_MS = 0;
+// Offline grace: after a successful online validation, the signed local
+// entitlement keeps working if the validation server becomes unreachable
+// (outage, travel, firewall). Bounded to 7 days so a lapsed subscription
+// cannot be ridden indefinitely by staying offline.
+const OFFLINE_GRACE_DAYS = 7;
+const OFFLINE_GRACE_MS = OFFLINE_GRACE_DAYS * 24 * 60 * 60 * 1000;
 // P3-02: Reduced from 5 minutes to 30 seconds to minimize bypass window.
 // Legitimate clock corrections (NTP, manual) are typically < 10 seconds.
 const CLOCK_ROLLBACK_THRESHOLD_MS = 30 * 1000;
@@ -75,11 +79,18 @@ function saveGateState(state, entitlementDir) {
   const fp = _stateFilePath(entitlementDir);
   const dir = path.dirname(fp);
   fs.mkdirSync(dir, { recursive: true });
-  const tmp = fp + ".tmp";
-  fs.writeFileSync(tmp, JSON.stringify(state, null, 2), "utf-8", { mode: 0o600 });
-  fs.renameSync(tmp, fp);
-  // P3-01: Set owner-only permissions (POSIX + Windows ACL)
-  setOwnerOnlyPermissions(fp);
+  const tmp = `${fp}.tmp.${process.pid}.${Date.now()}.${require("crypto").randomBytes(8).toString("hex")}`;
+  try {
+    fs.writeFileSync(tmp, JSON.stringify(state, null, 2), { encoding: "utf-8", flag: "wx", mode: 0o600 });
+    if (process.platform === "win32") {
+      try { fs.unlinkSync(fp); } catch (error) { if (error.code !== "ENOENT") throw error; }
+    }
+    fs.renameSync(tmp, fp);
+    setOwnerOnlyPermissions(fp);
+  } catch (error) {
+    try { fs.unlinkSync(tmp); } catch {}
+    throw error;
+  }
 }
 
 function detectClockRollback(currentTimeMs, gateState) {
@@ -89,7 +100,9 @@ function detectClockRollback(currentTimeMs, gateState) {
 function updateMonotonicState(currentTimeMs, now, gateState) {
   const updated = { ...gateState };
   if (currentTimeMs > updated.latest_observed_at) updated.latest_observed_at = currentTimeMs;
-  updated.last_validated_at = now.toISOString();
+  // NOTE: last_validated_at is reserved for ONLINE validation successes
+  // (see online.js) — it must not be bumped by purely local checks, or the
+  // offline grace window would be silently renewed by offline runs.
   return updated;
 }
 
@@ -101,6 +114,7 @@ function updateMonotonicState(currentTimeMs, now, gateState) {
  * @param {Function} [options._loadArtifact] - Override artifact loading (for testing)
  * @param {Function} [options._saveGateState] - Override state persistence (for testing)
  * @param {Function} [options._loadGateState] - Override state loading (for testing)
+ * @param {string} [options.installationId] - Installation identity for binding checks
  * @returns {{ allowed: boolean, state: string, message: string, entitlement?: object, graceDaysRemaining?: number }}
  */
 function checkEntitlement(options = {}) {

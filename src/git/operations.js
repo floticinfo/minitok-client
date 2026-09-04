@@ -6,6 +6,7 @@
  */
 
 const { execFileSync } = require("child_process");
+const { GitError } = require("../core/errors");
 
 /**
  * Execute a git command safely using execFileSync (no shell interpretation).
@@ -21,38 +22,46 @@ function git(repoRoot, args) {
       timeout: 30000,
       stdio: ["pipe", "pipe", "pipe"],
     }).trim();
-  } catch {
-    return "";
+  } catch (error) {
+    throw new GitError(`Git command failed: git ${args.join(" ")}`, {
+      code: error.code,
+      command: ["git", ...args],
+      status: error.status,
+    });
   }
 }
 
 function isGitRepo(repoRoot) {
-  const r = git(repoRoot, ["rev-parse", "--is-inside-work-tree"]);
-  return r === "true";
+  try {
+    return git(repoRoot, ["rev-parse", "--is-inside-work-tree"]) === "true";
+  } catch (error) {
+    if (error instanceof GitError) return false;
+    throw error;
+  }
 }
 
 function currentBranch(repoRoot) {
-  return git(repoRoot, ["branch", "--show-current"]);
+  try { return git(repoRoot, ["branch", "--show-current"]); } catch { return ""; }
 }
 
 function headCommit(repoRoot) {
-  return git(repoRoot, ["rev-parse", "--short", "HEAD"]);
+  try { return git(repoRoot, ["rev-parse", "--short", "HEAD"]); } catch { return ""; }
 }
 
 function status(repoRoot) {
-  return git(repoRoot, ["status", "--porcelain"]);
+  try { return git(repoRoot, ["status", "--porcelain"]); } catch { return ""; }
 }
 
 function diffStat(repoRoot) {
-  return git(repoRoot, ["diff", "--stat"]);
+  try { return git(repoRoot, ["diff", "--stat"]); } catch { return ""; }
 }
 
 function logRecent(repoRoot, count = 10) {
-  return git(repoRoot, ["log", "--oneline", `-${count}`]);
+  try { return git(repoRoot, ["log", "--oneline", `-${count}`]); } catch { return ""; }
 }
 
 function remoteUrl(repoRoot) {
-  return git(repoRoot, ["remote", "get-url", "origin"]);
+  try { return git(repoRoot, ["remote", "get-url", "origin"]); } catch { return ""; }
 }
 
 function fileCount(repoRoot) {

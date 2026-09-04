@@ -27,7 +27,7 @@ Otherwise respond with:
  * @param {Array} completedCycles - previous cycle results
  * @param {object} latestReview - latest review/verify result
  * @param {object} options
- * @returns {{ done: boolean, next_task?: string, summary?: string, cost: number }}
+ * @returns {Promise<{ done: boolean, next_task?: string, summary?: string, remaining_goals?: string[], tokens?: { input: number, output: number } }>}
  */
 async function generateNextTask(provider, goal, completedCycles, latestReview, options = {}) {
   const cycleSummaries = completedCycles.map((c, i) => {

@@ -16,7 +16,7 @@ const ALLOWED_FIELDS = {
   duration_ms:      { type: "integer", required: true, min: 0, max: 3_600_000 },
   files_changed:    { type: "integer", required: true, min: 0, max: 1000 },
   total_tokens:     { type: "integer", required: false, min: 0, max: 10_000_000 },
-  failure_category: { type: "enum", required: false, values: ["lint", "test", "validation", "timeout", "api_error", "unknown"] },
+  failure_category: { type: "enum", required: false, values: ["lint", "test", "validation", "type_error", "timeout", "api_error", "unknown"] },
 };
 
 /**

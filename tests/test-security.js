@@ -227,13 +227,40 @@ describe("High: KnowledgeStore concurrent safety", () => {
     const f = p.join(d, "outcomes.json");
     const ks1 = new KnowledgeStore(f);
     ks1.record({ goal: "first", status: "success" });
-    // Simulate external write
     const ks2 = new KnowledgeStore(f);
     ks2.record({ goal: "second", status: "success" });
-    // ks1 should pick up ks2's write on next record
     ks1.record({ goal: "third", status: "success" });
     const ks3 = new KnowledgeStore(f);
     assert.equal(ks3.size, 3);
+    clean(d);
+  });
+
+  it("recovers stale locks", () => {
+    const { KnowledgeStore } = require("../src/evolution/knowledge");
+    const d = tmpDir();
+    const f = p.join(d, "outcomes.json");
+    fs.mkdirSync(d, { recursive: true });
+    const lock = f + ".lock";
+    fs.writeFileSync(lock, JSON.stringify({ pid: 999999, token: "stale" }));
+    fs.utimesSync(lock, new Date(0), new Date(0));
+    const ks = new KnowledgeStore(f);
+    assert.equal(ks.record({ goal: "recovered", status: "success" }).goal, "recovered");
+    assert.equal(fs.existsSync(lock), false);
+    clean(d);
+  });
+
+  it("does not release a replacement lock", () => {
+    const { KnowledgeStore } = require("../src/evolution/knowledge");
+    const d = tmpDir();
+    const f = p.join(d, "outcomes.json");
+    const ks = new KnowledgeStore(f);
+    const lockState = ks._acquireLock();
+    fs.closeSync(lockState.fd);
+    fs.unlinkSync(lockState.lock);
+    fs.writeFileSync(lockState.lock, JSON.stringify({ pid: process.pid, token: "replacement" }));
+    ks._releaseLock(lockState);
+    assert.equal(fs.existsSync(lockState.lock), true);
+    fs.unlinkSync(lockState.lock);
     clean(d);
   });
 });

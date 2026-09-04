@@ -83,6 +83,61 @@ describe("Models", () => {
     assert.ok(result.live);
     assert.ok(Array.isArray(result.unknown));
   });
+
+  it("discovers OpenAI models with environment-only credentials", async () => {
+    const { discoverModels } = require("../src/llm/models");
+    const oldKey = process.env.OPENAI_API_KEY;
+    const oldFetch = global.fetch;
+    process.env.OPENAI_API_KEY = "openai-env-secret";
+    global.fetch = async () => ({ ok: true, status: 200, headers: { get: () => null }, json: async () => ({ data: [{ id: "gpt-env" }] }) });
+    try {
+      const result = await discoverModels({ openai: {} });
+      assert.deepEqual(result.live.openai, ["gpt-env"]);
+    } finally {
+      global.fetch = oldFetch;
+      if (oldKey === undefined) delete process.env.OPENAI_API_KEY; else process.env.OPENAI_API_KEY = oldKey;
+    }
+  });
+
+  it("discovers Google models with environment-only credentials", async () => {
+    const { discoverModels } = require("../src/llm/models");
+    const oldGoogle = process.env.GOOGLE_API_KEY;
+    const oldGemini = process.env.GEMINI_API_KEY;
+    const oldFetch = global.fetch;
+    process.env.GOOGLE_API_KEY = "google-env-secret";
+    delete process.env.GEMINI_API_KEY;
+    global.fetch = async () => ({ ok: true, status: 200, headers: { get: () => null }, json: async () => ({ models: [{ name: "models/gemini-env" }] }) });
+    try {
+      const result = await discoverModels({ google: {} });
+      assert.deepEqual(result.live.google, ["gemini-env"]);
+    } finally {
+      global.fetch = oldFetch;
+      if (oldGoogle === undefined) delete process.env.GOOGLE_API_KEY; else process.env.GOOGLE_API_KEY = oldGoogle;
+      if (oldGemini === undefined) delete process.env.GEMINI_API_KEY; else process.env.GEMINI_API_KEY = oldGemini;
+    }
+  });
+
+  it("discovers models with configured auth forms", async () => {
+    const { discoverModels } = require("../src/llm/models");
+    const oldFetch = global.fetch;
+    const requests = [];
+    global.fetch = async (url, options) => {
+      requests.push({ url, headers: options.headers });
+      const body = url.includes("openai") ? { data: [{ id: "gpt-configured" }] } : { models: [{ name: "models/gemini-configured" }] };
+      return { ok: true, status: 200, headers: { get: () => null }, json: async () => body };
+    };
+    try {
+      const result = await discoverModels({
+        openai: { auth: { type: "api_key", key: "openai-configured-secret" } },
+        google: { auth: { type: "api_key", key: "google-configured-secret", header: "x-goog-api-key", scheme: "raw" } },
+      });
+      assert.deepEqual(result.live.openai, ["gpt-configured"]);
+      assert.deepEqual(result.live.google, ["gemini-configured"]);
+      assert.equal(requests[0].headers["x-api-key"], "openai-configured-secret");
+      assert.equal(requests[1].headers["x-goog-api-key"], "google-configured-secret");
+      assert.equal(JSON.stringify(result).includes("secret"), false);
+    } finally { global.fetch = oldFetch; }
+  });
 });
 
 describe("Reasoning in Provider", () => {

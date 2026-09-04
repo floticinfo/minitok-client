@@ -1,166 +1,68 @@
 # minitok Data Classification
 
 > **Document type:** Technical data-processing boundary definition
-> **Version:** 1.0.0
-> **Last updated:** 2026-08-28
-> **Applies to:** `@flotic/minitok` client v1.3.0+ and `minitok-server`
+> **Version:** 1.1.0
+> **Last updated:** 2026-09-04
+> **Applies to:** `@flotic/minitok` client v1.3.2 and compatible `minitok-server` v0.1.0 API
 
----
+This inventory describes implementation boundaries. It does not establish legal classifications, retention obligations, or jurisdiction-specific rights.
 
 ## 1. Classification Categories
 
-| Class | Label | Description | Server Transfer |
-|-------|-------|-------------|-----------------|
-| D0 | PUBLIC | Non-sensitive operational data | Allowed |
-| D1 | LICENSE | Entitlement/licensing lifecycle data | Required for service operation |
-| D2 | BILLING | Subscription/payment data | Required for service operation |
-| D3 | TELEMETRY | Sanitized aggregate usage metrics | Conditional (opt-in + entitlement + plan feature) |
-| D4 | LOCAL_ONLY | User content — never leaves the machine | **FORBIDDEN** |
-| D5 | SECRET | Cryptographic secrets, API keys, tokens | **FORBIDDEN to minitok server** |
----
+| Class | Label | Description | Transfer boundary |
+|---|---|---|---|
+| D0 | PUBLIC | Public product and operational data | Publicly displayed or operationally shared |
+| D1 | LICENSE | Activation and entitlement lifecycle data | MinTok server for activation and validation |
+| D2 | BILLING | Account, subscription, and payment-event data | MinTok server and payment provider as required by the service |
+| D3 | TELEMETRY | Sanitized allowlisted workflow metrics | MinTok server only after opt-in and entitlement gates |
+| D4 | LOCAL_ONLY | User content and workflow content | Not sent to minitok server |
+| D5 | SECRET | API keys, private keys, passwords, and token values | Not sent to minitok server; provider-specific credentials go only to their configured provider |
 
-## 2. Detailed Classification
+## 2. D4 — LOCAL_ONLY
 
-### D4 — LOCAL_ONLY (Never transmitted to minitok server)
+Prompts, source code, file contents, command output, terminal output, generated code and text, knowledge entries, goals, summaries, decision traces, agent context, repository names and paths, LLM request/response content, and path-bearing error messages are outside the minitok-server telemetry payload. Configured LLM providers may receive the data required by the user's workflow.
 
-| Data Item | Source | Storage | Notes |
-|-----------|--------|---------|-------|
-| User prompt / task instruction | CLI argument `minitok run "..."` | Local memory, `last-run.json` | Only sent to LLM provider |
-| Source code | Repository files | Local filesystem | Only sent to LLM provider as context |
-| File contents | Read during pipeline | Local filesystem | Only sent to LLM provider |
-| Command output | Executed during verification | Local memory | Never transmitted |
-| Terminal output | stdout/stderr | Local memory | Never transmitted |
-| Generated code | LLM response → applied | Local filesystem | Never transmitted |
-| Generated text | LLM response | Local memory | Never transmitted |
-| Knowledge entries | KnowledgeStore | `~/.minitok/evolution/outcomes.json` | Never transmitted to minitok server |
-| Goal | Pipeline execution | `outcomes.json` | **Stripped by sanitizer before any upload** |
-| Summary | Pipeline execution | `outcomes.json` | **Stripped by sanitizer before any upload** |
-| Decision trace | Pipeline cycles | Local memory | Never transmitted |
-| Agent reasoning/context | LLM interaction | Local memory | Never transmitted |
-| Repository metadata (name, path) | Workspace config | Local config | Never transmitted |
-| LLM request/response content | Provider interaction | Local memory | Never transmitted |
-| Error messages containing paths | Pipeline errors | Local memory | Never transmitted |
+## 3. D3 — TELEMETRY
 
-### D3 — TELEMETRY (Conditional upload)
+The current client sanitizer and server endpoint allow exactly these fields:
 
-| Data Item | Type | Range | Description |
-|-----------|------|-------|-------------|
-| `status` | enum | `success`, `failure`, `partial` | Outcome status |
-| `cycles` | integer | 0–100 | Pipeline cycles taken |
-| `duration_ms` | integer | 0–3,600,000 | Wall-clock execution time |
-| `files_changed` | integer | 0–1000 | Files modified during run |
-| `total_tokens` | integer (optional) | 0–10,000,000 | Total tokens consumed |
-| `failure_category` | enum (optional) | `lint`, `test`, `validation`, `timeout`, `api_error`, `unknown` | Failure classification |
+| Field | Required | Values or range |
+|---|---:|---|
+| `status` | yes | `success`, `failure`, `partial` |
+| `cycles` | yes | integer 0–100 |
+| `duration_ms` | yes | integer 0–3,600,000 |
+| `files_changed` | yes | integer 0–1,000 |
+| `total_tokens` | no | integer 0–10,000,000 |
+| `failure_category` | no | `lint`, `test`, `validation`, `type_error`, `timeout`, `api_error`, `unknown` |
 
-**Upload requirements (all must be true):**
-1. Valid entitlement (cryptographically verified)
-2. `evolution_upload` feature in entitlement
-3. User explicit opt-in (`minitok evolution enable`)
-4. Sanitizer allowlist pass
-5. Valid server URL and installation token
-6. Server-side subscription + feature validation
+Upload requires valid entitlement, the `evolution_upload` feature, explicit local opt-in, sanitizer success, a configured server URL and token, server-side customer/subscription/plan/feature validation, and schema acceptance.
 
-### D1 — LICENSE (Server-transmitted for service operation)
+## 4. D1 — LICENSE
 
-| Data Item | Example | Transmitted To |
-|-----------|---------|----------------|
-| `entitlement_id` | UUID | minitok server |
-| `installation_id` | UUID | minitok server (activation) |
-| `plan_id` | `"pro"` | minitok server |
-| `features` | `["evolution_upload"]` | minitok server (in signed payload) |
-| `max_devices` | `3` | minitok server |
-| `issued_at` | ISO 8601 | minitok server |
-| `expires_at` | ISO 8601 | minitok server |
-| `key_id` | `"key-2024-01-prod"` | minitok server |
+The activation and entitlement flows process identifiers and entitlement attributes such as `entitlement_id`, `installation_id`, `plan_id`, `features`, `max_devices`, `issued_at`, `expires_at`, and `key_id`. The server also accepts an optional activation `hostname`; the current server deletion path clears stored installation hostnames.
 
-### D2 — BILLING (Server-transmitted)
+## 5. D2 — BILLING and Account Data
 
-| Data Item | Transmitted To |
-|-----------|----------------|
-| `customer_id` | minitok server |
-| `subscription_id` | minitok server |
-| `subscription status` | minitok server |
-| Payment event IDs | minitok server + Dodo |
-| Webhook event IDs | minitok server |
+The server implementation includes customer email, customer/account status, subscription identifiers and status, payment and webhook event identifiers, activation metadata, and billing-provider identifiers. Payment details are handled by the configured payment provider; this repository does not define a complete legal payment-data notice.
 
-### D5 — SECRET (Never transmitted to minitok server)
+## 6. D5 — SECRET
 
-| Data Item | Storage | Transmitted To |
-|-----------|---------|----------------|
-| LLM API keys (Anthropic, OpenAI, Google, OpenRouter) | `~/.minitok/tokens/` | LLM provider **only** |
-| OAuth tokens | `~/.minitok/tokens/` | LLM provider **only** |
-| Installation JWT | `~/.minitok/entitlement/` | minitok server (Bearer auth only) |
-| Ed25519 signing private key | Server only | **Never leaves server** |
-| JWT secret | Server env | **Never leaves server** |
-| Dodo API key | Server env | Dodo API **only** |
-| Dodo API key | Server env | Dodo API **only** |
-| npm token | Local CI | npm registry **only** |
----
+Secret values include LLM API keys, OAuth tokens, installation bearer tokens, Ed25519 private keys, JWT secrets, activation-key encryption keys, Dodo credentials, SMTP credentials, and npm tokens. Secret values are not part of telemetry. The installation bearer token is used for authenticated service requests, but its value is not included in telemetry fields.
 
-## 3. Data Flow Diagram
+## 7. Server Boundary
 
-```
-USER MACHINE (client)
-├── D4 LOCAL_ONLY
-│   ├── Prompt/Source/Knowledge → LLM Provider (NOT to minitok server)
-│   ├── Generated content → Local filesystem
-│   └── Agent context/decisions → Local memory
-│
-├── D3 TELEMETRY (CONDITIONAL upload)
-│   └── 6-step gate:
-│       1. Entitlement valid?
-│       2. Feature "evolution_upload" present?
-│       3. User opt-in enabled?
-│       4. Sanitizer allowlist pass?
-│       5. Server URL + token configured?
-│       6. Network request → minitok server
-│
-├── D1 LICENSE (activation)
-│   └── POST /v1/activate → minitok server
-│
-└── D5 SECRET
-    └── API keys → LLM Provider (NOT to minitok server)
-
-minitok SERVER
-├── Receives: D1 (license), D2 (billing), D3 (telemetry)
-├── NEVER accepts: D4 (user content), D5 (secrets)
-└── Server-side validation: JWT → customer → subscription → plan → features → store
+```text
+Client -> minitok server: D1, D2, and conditional D3
+Client -> configured LLM provider: workflow data required by the user's provider configuration
+Client -> minitok server: not D4 or D5 payload values
 ```
 
----
+## 8. Fail-Closed Behavior
 
-## 4. Privacy Consent vs Entitlement
+Unknown classification, unknown consent, unknown entitlement, sanitizer failure, server validation failure, or missing credentials blocks telemetry transfer. This technical behavior does not determine whether a legal notice or consent mechanism is sufficient.
 
-```
-ENTITLEMENT AXIS                    PRIVACY CONSENT AXIS
-├── Controls: feature access        ├── Controls: data transmission
-├── Source: subscription/purchase   ├── Source: user explicit opt-in
-├── Validated: cryptographic        ├── Validated: local file state
-└── Scoped: per-installation        └── Scoped: per-user preference
+## 9. Operator and Legal TODOs
 
-ENTITLEMENT DOES NOT IMPLY CONSENT
-Consent does not override LOCAL_ONLY classification
-```
-
----
-
-## 5. Fail-Closed Principle
-
-For ALL data classification decisions:
-
-| Condition | Behavior |
-|-----------|----------|
-| Classification unknown | Treat as LOCAL_ONLY — do not transmit |
-| Consent state unknown | Treat as OFF — do not transmit |
-| Entitlement state unknown | Treat as BLOCKED — do not transmit |
-| Sanitizer validation fails | REJECT — do not transmit |
-| Server validation fails | REJECT — do not store |
-| Credentials missing | BLOCK — do not transmit |
-
----
-
-## 6. Future Considerations
-
-- **Cloud knowledge sync:** D4 data would require its own classification review, explicit opt-in, and separate consent. D4 classification prevents automatic sync.
-- **Enterprise/Team plans:** Centralized policy administration must respect data classification boundaries. Plan-level policy cannot override LOCAL_ONLY classification.
-- **Diagnostic/debug data:** Must pass through the same classification gate. Debug mode does not bypass classification.
+- TODO: Legal owner must approve personal-data categories, legal bases, controller/processor roles, international-transfer disclosures, and rights language.
+- TODO: Operator must document retention and deletion behavior for account, billing, installation, audit-log, and backup copies.
+- TODO: Operator must confirm whether hostnames, IP addresses, support messages, Sentry events, and infrastructure logs are included in the public data inventory.

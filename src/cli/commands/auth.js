@@ -9,9 +9,8 @@ const { TokenStore } = require("../../auth/token-store");
 const { OAuthFlow, OAUTH_CONFIGS } = require("../../auth/oauth");
 const { saveCustomerToken } = require("../../auth/customer-token");
 const { resolveServerUrl } = require("./server-config");
-const https = require("https");
-const http = require("http");
 const readline = require("readline");
+const { postJson } = require("../../core/http");
 
 const tokenStore = new TokenStore();
 
@@ -35,39 +34,26 @@ function prompt(question) {
 
 /**
  * Interactive login: opens browser for OAuth or prompts for API key.
- * @param {string} provider - Provider name (anthropic, openai, github, etc.)
  * @returns {Promise<number>} Exit code
  */
 async function cmdAuthCustomerLogin(server, email, password) {
   if (!email || !password) {
-    console.error("Usage: minitok auth customer-login <email> [password]");
+    console.error("Usage: minitok auth customer-login <email>");
     return 1;
   }
   const result = await customerAuthRequest("/v1/auth/login", { email, password }, server);
   if (!result.ok || !result.body?.token) {
-    console.error(`Customer login failed: ${result.body?.error || "request failed"}`);
+    console.error(`[error] Customer login failed: ${result.body?.error || "request failed"}`);
     return 1;
   }
   saveCustomerToken(result.body.token);
-  console.log("Customer login successful. Token stored securely.");
+  console.log("[ok] Customer login successful. Token stored securely.");
   return 0;
 }
 
 function customerAuthRequest(endpoint, body, server) {
-  return new Promise((resolve, reject) => {
-    const base = resolveServerUrl({ cliServer: server });
-    const url = new URL(base + endpoint);
-    const mod = url.protocol === "https:" ? https : http;
-    const payload = JSON.stringify(body);
-    const req = mod.request(url, { method: "POST", headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(payload) }, timeout: 30000 }, (res) => {
-      let data = "";
-      res.on("data", chunk => { data += chunk; });
-      res.on("end", () => { let parsed = null; try { parsed = JSON.parse(data); } catch {} resolve({ ok: res.statusCode >= 200 && res.statusCode < 300, body: parsed }); });
-    });
-    req.on("error", reject);
-    req.on("timeout", () => { req.destroy(); reject(new Error("Request timed out")); });
-    req.end(payload);
-  });
+  const base = resolveServerUrl({ cliServer: server });
+  return postJson(base + endpoint, body, 30000);
 }
 
 async function cmdAuthLogin(provider) {
@@ -206,10 +192,9 @@ function register(program) {
     .command("customer-login")
     .description("Log in to the minitok customer account for billing commands")
     .argument("<email>", "Customer email")
-    .argument("[password]", "Customer password")
     .option("--server <url>", "minitok server URL")
-    .action(async (email, password, options) => {
-      const value = password || await prompt("Customer password: ");
+    .action(async (email, options) => {
+      const value = await prompt("Customer password: ");
       process.exit(await cmdAuthCustomerLogin(options.server, email, value));
     });
 

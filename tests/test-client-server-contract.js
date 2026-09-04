@@ -1,6 +1,12 @@
 "use strict";
 /**
  * Client/Server Contract Test — Installation Binding E2E
+ *
+ * Signs with the exact server signing algorithm (canonical JSON + Ed25519 +
+ * base64url, artifact { payload, signature, key_id }) so this suite is
+ * self-contained and passes in CI / fresh clones. True cross-repository
+ * compatibility (server signer.js → client verifier) is covered by the
+ * server repo's test/signer.test.js, which loads the client in reverse.
  */
 const { describe, it, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
@@ -11,8 +17,11 @@ const os = require("os");
 const model = require("../src/entitlement/model");
 const { verifyEntitlement, EntitlementState } = require("../src/entitlement/verify");
 const pubKey = require("../src/entitlement/public-key");
-const serverSignerPath = path.resolve(__dirname, "../../minitok-server-deploy/src/entitlement/signer.js");
-const serverSigner = require(serverSignerPath);
+function signEntitlement({ privateKeyPem, keyId, payload }) {
+  const canonical = model.canonicalize(payload);
+  const sig = crypto.sign(null, Buffer.from(canonical, "utf-8"), crypto.createPrivateKey(privateKeyPem));
+  return { payload, signature: sig.toString("base64url"), key_id: keyId };
+}
 function genKeyPair() { const kp = crypto.generateKeyPairSync("ed25519"); return {
   privateKeyPem: kp.privateKey.export({ type: "pkcs8", format: "pem" }),
   publicKeyPem: kp.publicKey.export({ type: "spki", format: "pem" }),
@@ -29,9 +38,9 @@ beforeEach(() => { pubKey.clearKeys(); kp = genKeyPair(); pubKey.registerKey("pr
 afterEach(() => { pubKey.clearKeys(); clean(dirA); clean(dirB); });
 function signFor(installationId, overrides) {
   const now = new Date(); const expires = new Date(now.getTime() + 30 * 86400000);
-  return serverSigner.signEntitlement({ privateKeyPem: kp.privateKeyPem, keyId: "prod-key", payload: Object.assign({
+  return signEntitlement({ privateKeyPem: kp.privateKeyPem, keyId: "prod-key", payload: Object.assign({
     entitlement_id: "11111111-1111-4111-8111-111111111111", installation_id: installationId,
-    plan_id: "pro", features: ["autonomous_run"], max_devices: 3,
+    plan_id: "open", features: ["autonomous_run"], max_devices: 3,
     issued_at: now.toISOString(), expires_at: expires.toISOString(), key_id: "prod-key"
   }, overrides || {}) });
 }
@@ -87,9 +96,9 @@ describe("CLIENT/SERVER CONTRACT — Installation Binding", () => {
     assert.equal(r.valid, false, "Different installation denied during grace");
   });
 
-  it("C6: Legacy entitlement (no installation_id) accepted", () => {
+  it("C6: Legacy entitlement (no installation_id) is accepted only for migration diagnostics", () => {
     const now = new Date(); const expires = new Date(now.getTime() + 86400000);
-    const payload = { entitlement_id: "66666666-6666-4666-8666-666666666666", plan_id: "pro",
+    const payload = { entitlement_id: "66666666-6666-4666-8666-666666666666", plan_id: "open",
       features: ["autonomous_run"], max_devices: 1, issued_at: now.toISOString(),
       expires_at: expires.toISOString(), key_id: "prod-key" };
     const canonical = model.canonicalize(payload);

@@ -26,7 +26,7 @@
  * for new-format entitlements only.
  */
 
-const VALID_PLAN_IDS = ["pro", "team", "enterprise", "trial"];
+const VALID_PLAN_IDS = ["open", "select", "private"];
 
 /**
  * Check whether a value is a valid ISO 8601 UTC timestamp.
@@ -53,7 +53,7 @@ function isValidUUID(v) {
  * Returns { valid: true, payload } or { valid: false, reason }.
  *
  * @param {*} payload
- * @returns {{ valid: boolean, payload?: object, reason?: string }}
+ * @returns {{ valid: boolean, payload?: object, reason?: string, legacy?: boolean }}
  */
 function validatePayload(payload) {
   if (payload === null || payload === undefined || typeof payload !== "object" || Array.isArray(payload)) {
@@ -127,7 +127,7 @@ function validatePayload(payload) {
  * Validate a complete entitlement artifact (payload + signature + key_id at top level).
  *
  * @param {*} artifact
- * @returns {{ valid: boolean, payload?: object, signature?: string, key_id?: string, reason?: string }}
+ * @returns {{ valid: boolean, payload?: object, signature?: string, key_id?: string, reason?: string, legacy?: boolean }}
  */
 function validateArtifact(artifact) {
   if (artifact === null || artifact === undefined || typeof artifact !== "object" || Array.isArray(artifact)) {

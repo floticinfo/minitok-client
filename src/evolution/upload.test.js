@@ -7,7 +7,7 @@ const VO = { status: "success", cycles: 3, duration_ms: 1000, files_changed: 2 }
 
 function makeOpts(overrides = {}) {
   return {
-    _entitlementCheck: { allowed: true, entitlement: { features: ["evolution_upload"] } },
+    _entitlementCheck: { allowed: true, entitlement: { plan_id: "open", features: ["evolution_upload"] } },
     _optIn: { isEnabled: () => true },
     serverUrl: "https://srv.ex", token: "jwt",
     ...overrides,
@@ -15,7 +15,7 @@ function makeOpts(overrides = {}) {
 }
 
 describe("Upload - gate chain (A-N)", () => {
-  it("A: Trial no feature → no upload", async () => {
+  it("A: Private no upload feature → no upload", async () => {
     const r = await uploadEvolutionOutcome(VO, makeOpts({
       _entitlementCheck: { allowed: true, entitlement: { features: ["basic_features"] } },
     }));
@@ -23,15 +23,15 @@ describe("Upload - gate chain (A-N)", () => {
     assert.match(r.reason, /evolution_upload/);
   });
 
-  it("B: Pro opt-in=false → no upload", async () => {
+  it("B: Open opt-in=false → no upload", async () => {
     const r = await uploadEvolutionOutcome(VO, makeOpts({
       _optIn: { isEnabled: () => false },
     }));
     assert.equal(r.sent, false);
-    assert.match(r.reason, /opted-in/);
+    assert.match(r.reason, /consent|opted-in/);
   });
 
-  it("C: Pro opt-in=true → sends", async () => {
+  it("C: Open opt-in=true → sends", async () => {
     let url = null;
     const mock = (u, b) => { url = u; return Promise.resolve({ ok: true, status: 201 }); };
     const r = await uploadEvolutionOutcome(VO, makeOpts({ _httpPost: mock }));

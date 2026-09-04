@@ -2,7 +2,9 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const { createProvider } = require("./provider");
+const { createProvider, CustomProvider } = require("./provider");
+const { discoverModels } = require("./models");
+const dns = require("dns").promises;
 
 describe("generic custom provider", () => {
   it("supports arbitrary provider names and endpoint aliases", async () => {
@@ -11,5 +13,173 @@ describe("generic custom provider", () => {
     assert.equal(provider.baseUrl, "https://example.test/v1");
     const auth = await provider._resolveAuth();
     assert.equal(auth.headers["X-Token"], "key");
+  });
+
+  it("blocks unsafe custom HTTPS hosts and resolved addresses", async () => {
+    assert.throws(() => createProvider("custom", { base_url: "https://127.0.0.1:8443" }), /blocked/);
+    assert.throws(() => createProvider("custom", { base_url: "https://metadata.google.internal" }), /blocked/);
+    const originalLookup = dns.lookup;
+    dns.lookup = async () => [{ address: "10.0.0.7", family: 4 }];
+    try {
+      const provider = createProvider("custom", { base_url: "https://public.example" });
+      await assert.rejects(() => provider.complete([{ role: "user", content: "test" }]), /blocked internal address/);
+    } finally {
+      dns.lookup = originalLookup;
+    }
+  });
+
+  it("blocks all special IPv4 and IPv6 ranges, including mapped IPv6", () => {
+    const addresses = [
+      "0.0.0.0", "10.0.0.1", "100.64.0.1", "127.0.0.1", "169.254.1.1", "172.16.0.1", "192.0.0.1", "192.0.0.9", "192.0.2.1", "192.168.1.1", "198.18.0.1", "198.51.100.1", "203.0.113.1", "224.0.0.1", "255.255.255.255",
+      "::", "::1", "fc00::1", "fe80::1", "ff02::1", "2001:db8::1", "2001:10::1", "::ffff:10.0.0.1", "::ffff:127.0.0.1",
+    ];
+    for (const address of addresses) {
+      const host = address.includes(":") ? `[${address}]` : address;
+      assert.throws(() => createProvider("custom", { base_url: `https://${host}` }), /blocked/, address);
+    }
+  });
+
+  it("pins the validated address when DNS changes before a direct HTTPS request", async () => {
+    const originalLookup = dns.lookup;
+    const originalFetch = global.fetch;
+    let lookupCalls = 0;
+    let requestOptions;
+    dns.lookup = async () => {
+      lookupCalls++;
+      return [{ address: lookupCalls === 1 ? "93.184.216.34" : "10.0.0.7", family: 4 }];
+    };
+    global.fetch = async (_url, options) => {
+      requestOptions = options;
+      return { ok: true, status: 200, headers: { get: () => null }, json: async () => ({ choices: [{ message: { content: "ok" } }] }) };
+    };
+    const oldNoProxy = process.env.NO_PROXY;
+    process.env.NO_PROXY = "public.example";
+    try {
+      const provider = createProvider("custom", { base_url: "https://public.example", api_key: "key" });
+      await provider.complete([{ role: "user", content: "test" }]);
+      assert.equal(lookupCalls, 1);
+      assert.equal(typeof requestOptions.dispatcher, "object");
+      const dispatcherOptions = requestOptions.dispatcher[Object.getOwnPropertySymbols(requestOptions.dispatcher).find(symbol => String(symbol).includes("options"))];
+      await new Promise((resolve, reject) => dispatcherOptions.connect.lookup("public.example", { family: 4 }, (error, address) => error ? reject(error) : (assert.equal(address, "93.184.216.34"), resolve())));
+    } finally {
+      dns.lookup = originalLookup;
+      global.fetch = originalFetch;
+      if (oldNoProxy === undefined) delete process.env.NO_PROXY;
+      else process.env.NO_PROXY = oldNoProxy;
+    }
+  });
+
+  it("uses configured auth.key and environment-backed credentials for model discovery", async () => {
+    const originalLookup = dns.lookup;
+    const originalFetch = global.fetch;
+    const originalEnv = process.env.MINITOK_CUSTOM_DISCOVERY_KEY;
+    const requests = [];
+    dns.lookup = async () => [{ address: "93.184.216.34", family: 4 }];
+    global.fetch = async (_url, options) => {
+      requests.push(options);
+      return { ok: true, status: 200, headers: { get: () => null }, json: async () => ({ data: [{ id: "discovered-model" }] }) };
+    };
+    process.env.MINITOK_CUSTOM_DISCOVERY_KEY = "env-secret";
+    try {
+      const configured = await CustomProvider.fetchModels("https://public.example", "", { type: "api_key", key: "configured-secret", scheme: "Bearer" }, "custom");
+      const environmentBacked = await CustomProvider.fetchModels("https://public.example", "", { type: "api_key", key: "${MINITOK_CUSTOM_DISCOVERY_KEY}", scheme: "Bearer" }, "custom");
+      assert.equal(configured[0].id, "discovered-model");
+      assert.equal(environmentBacked[0].id, "discovered-model");
+      assert.equal(requests[0].headers.Authorization, "Bearer configured-secret");
+      assert.equal(requests[1].headers.Authorization, "Bearer env-secret");
+    } finally {
+      dns.lookup = originalLookup;
+      global.fetch = originalFetch;
+      if (originalEnv === undefined) delete process.env.MINITOK_CUSTOM_DISCOVERY_KEY;
+      else process.env.MINITOK_CUSTOM_DISCOVERY_KEY = originalEnv;
+    }
+  });
+
+  it("applies DNS validation to model discovery and returns safe failures", async () => {
+    const originalLookup = dns.lookup;
+    const originalFetch = global.fetch;
+    dns.lookup = async () => { throw new Error("resolver detail"); };
+    global.fetch = async () => { throw new Error("must not fetch"); };
+    try { assert.deepEqual(await CustomProvider.fetchModels("https://public.example", "key"), []); }
+    finally { dns.lookup = originalLookup; global.fetch = originalFetch; }
+  });
+
+  it("validates custom endpoints before proxy forwarding", async () => {
+    const originalLookup = dns.lookup;
+    const originalFetch = global.fetch;
+    const oldProxy = process.env.HTTPS_PROXY;
+    process.env.HTTPS_PROXY = "http://proxy.example:8080";
+    dns.lookup = async () => [{ address: "169.254.169.254", family: 4 }];
+    global.fetch = async () => { throw new Error("must not fetch"); };
+    try { assert.deepEqual(await CustomProvider.fetchModels("https://public.example", "key"), []); }
+    finally {
+      dns.lookup = originalLookup;
+      global.fetch = originalFetch;
+      if (oldProxy === undefined) delete process.env.HTTPS_PROXY;
+      else process.env.HTTPS_PROXY = oldProxy;
+    }
+  });
+
+  it("pins the validated address before proxy routing", async () => {
+    const originalLookup = dns.lookup;
+    const originalFetch = global.fetch;
+    const oldProxy = process.env.HTTPS_PROXY;
+    let requestUrl;
+    process.env.HTTPS_PROXY = "http://proxy.example:8080";
+    dns.lookup = async () => [{ address: "93.184.216.34", family: 4 }];
+    global.fetch = async (url) => {
+      requestUrl = url;
+      return { ok: true, status: 200, headers: { get: () => null }, json: async () => ({ choices: [{ message: { content: "ok" } }] }) };
+    };
+    try {
+      const provider = createProvider("custom", { base_url: "https://public.example", api_key: "key" });
+      await provider.complete([{ role: "user", content: "test" }]);
+      assert.match(requestUrl, /^https:\/\/93\.184\.216\.34\//);
+    } finally {
+      dns.lookup = originalLookup;
+      global.fetch = originalFetch;
+      if (oldProxy === undefined) delete process.env.HTTPS_PROXY;
+      else process.env.HTTPS_PROXY = oldProxy;
+    }
+  });
+
+  it("discovers OpenRouter models through configured auth.key", async () => {
+    const originalFetch = global.fetch;
+    let authorization;
+    global.fetch = async (_url, options) => {
+      authorization = options.headers.Authorization;
+      return { ok: true, status: 200, headers: { get: () => null }, json: async () => ({ data: [{ id: "router/model" }] }) };
+    };
+    try {
+      const result = await discoverModels({ openrouter: { auth: { type: "api_key", key: "router-secret", scheme: "Bearer" } } });
+      assert.deepEqual(result.live.openrouter.map(model => model.id), ["router/model"]);
+      assert.equal(authorization, "Bearer router-secret");
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  it("applies DNS SSRF validation consistently to built-in providers", async () => {
+    const originalLookup = dns.lookup;
+    dns.lookup = async () => [{ address: "169.254.169.254", family: 4 }];
+    const originalFetch = global.fetch;
+    global.fetch = async () => { throw new Error("must not fetch"); };
+    try {
+      for (const name of ["anthropic", "openai", "google", "openrouter"]) {
+        const provider = createProvider(name, { api_key: "key", endpoint: "https://public.example" });
+        await assert.rejects(() => provider.complete([{ role: "user", content: "test" }]), /blocked internal address/);
+      }
+    } finally {
+      dns.lookup = originalLookup;
+      global.fetch = originalFetch;
+    }
+  });
+
+  it("applies endpoint validation consistently to built-in providers", () => {
+    for (const name of ["anthropic", "openai", "google", "openrouter"]) {
+      assert.throws(() => createProvider(name, { endpoint: "http://remote.example/v1" }), /HTTP endpoints are limited to localhost/);
+      assert.throws(() => createProvider(name, { endpoint: "https://example.test/v1?key=secret" }), /query or fragment/);
+    }
+    assert.doesNotThrow(() => createProvider("openai", { endpoint: "http://127.0.0.1:8080/v1" }));
   });
 });

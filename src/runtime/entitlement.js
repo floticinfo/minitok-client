@@ -1,6 +1,6 @@
 "use strict";
 
-const { checkEntitlementOnline } = require("../entitlement/online");
+const { authorizeEntitlement } = require("../entitlement/policy");
 
 class EntitlementService {
   constructor(entitlementDir) {
@@ -8,7 +8,7 @@ class EntitlementService {
   }
 
   status(options = {}) {
-    return checkEntitlementOnline({ ...options, entitlementDir: this._dir });
+    return authorizeEntitlement({ ...options, entitlementDir: this._dir });
   }
 }
 

@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "strict": false,
+    "noImplicitAny": false
+  },
+  "include": ["bin/**/*.js", "src/**/*.js", "scripts/**/*.mjs"],
+  "exclude": ["src/**/*.test.js", "tests/**/*.js", "src/cli/commands/admin-activate.js"]
+}

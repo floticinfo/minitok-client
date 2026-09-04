@@ -14,14 +14,17 @@ const { implement, applyChanges } = require("./implementer");
 const { verify } = require("./verifier");
 const { verifyCommand } = require("./check");
 const { buildRepairTask } = require("./repair");
-const { writeContract, writeContextManifest } = require("../state/contracts");
+const { writeContract, writeContextManifest, readContract } = require("../state/contracts");
 const { recordRunEvidence } = require("../run-evidence");
 const { generateNextTask } = require("./next_task");
 const { compactText, DEFAULT_CONTEXT_BUDGET_CHARS } = require("../context/compaction");
 const { KnowledgeStore } = require("../evolution/knowledge");
-const { analyzeFailurePatterns } = require("../evolution/analyzer");
-const { recommendPolicy } = require("../evolution/policy");
+const { analyzeFailurePatterns, FailureAnalyzer } = require("../evolution/analyzer");
+const { recommendPolicy, EscalationEngine } = require("../evolution/policy");
 const { uploadEvolutionOutcome } = require("../evolution/upload");
+const { authorizeEntitlement } = require("../entitlement/policy");
+const { ALLOWED_FIELDS } = require("../evolution/sanitize");
+const { findEscalationModel } = require("../llm/models");
 const { resolveServerUrl } = require("../cli/commands/server-config");
 const git = require("../git/operations");
 const readline = require("readline");
@@ -91,10 +94,9 @@ async function promptConfirmation(changesResult, opts) {
   const changes = changesResult.changes || [];
   if (changes.length === 0) return true;
 
-  // Non-TTY: auto-accept with warning
   if (!process.stdin.isTTY) {
-    console.warn("⚠️  No TTY detected. Auto-accepting file changes. Use --auto-accept explicitly in CI.");
-    return true;
+    console.error("No TTY detected. Refusing to accept file changes without --auto-accept.");
+    return false;
   }
 
   // Display changes to user
@@ -123,17 +125,21 @@ async function runPipelineInWorkspace(task, opts = {}) {
     throw new Error(`Not a git repository: ${repoRoot}`);
   }
 
+  // A contract still marked "running" before this run starts belongs to a
+  // crashed predecessor run — mark it interrupted so it cannot survive forever.
+  const previousContract = readContract(repoRoot);
+  if (previousContract && previousContract.status === "running" && previousContract.updated_at) {
+    writeContract(repoRoot, { ...previousContract, status: "interrupted" });
+  }
   writeContract(repoRoot, { status: "running", goal: task, verify_command: config.validation?.script_path || "VERIFY_CMD.sh" });
 
-  // Entitlement gate — must pass before any LLM/provider work
+  // Entitlement gate — must pass before any LLM/provider work.
+  // No environment-variable bypass: paid execution always requires a valid
+  // entitlement. Programmatic tests use opts.skipEntitlementCheck explicitly.
   let gateResult = null;
-  const devMode = process.env.MINITOK_DEV_MODE === "1" && process.env.NODE_ENV !== "production";
-  if (devMode) {
-    console.warn("⚠️  MINITOK_DEV_MODE=1 — entitlement gate bypassed for local development only.");
-  } else if (!opts.skipEntitlementCheck) {
-    const { checkEntitlementOnline } = require("../entitlement/online");
+  if (!opts.skipEntitlementCheck) {
     const { GateState } = require("../entitlement/gate");
-    gateResult = await checkEntitlementOnline({ entitlementDir: opts.entitlementDir, serverUrl: opts.serverUrl || resolveServerUrl() });
+    gateResult = await authorizeEntitlement({ entitlementDir: opts.entitlementDir, serverUrl: opts.serverUrl || resolveServerUrl() });
     if (!gateResult.allowed) {
       console.error(`\n🚫 Entitlement check failed: ${gateResult.message}`);
       if (gateResult.state === GateState.OFFLINE_GRACE) {
@@ -150,11 +156,24 @@ async function runPipelineInWorkspace(task, opts = {}) {
   const configuredProviderNames = Object.keys(providersConfig);
   const defaultProvider = config.default_provider || configuredProviderNames[0] || "";
   const ALIAS_MAP = { claude: "anthropic", gpt: "openai", gemini: "google" };
+  providerModule.configureRetries({
+    maxRetries: config.execution?.max_retries === "unlimited" ? (Number(config.execution?.retry_hard_limit) || 5) : (Number(config.execution?.max_retries) || 5),
+    backoffMs: (Number(config.execution?.retry_backoff_sec) || 1) * 1000,
+    maxBackoffMs: (Number(config.execution?.retry_max_sec) || 30) * 1000,
+  });
+  const pricingFor = (providerName) => {
+    const canonical = ALIAS_MAP[providerName] || providerName;
+    return providersConfig[providerName]?.pricing || providersConfig[canonical]?.pricing || null;
+  };
   const createRoleProvider = (role) => {
     const providerName = resolveProviderName(config, role, opts.providerOverride) || defaultProvider;
     if (!providerName) throw new Error(`No provider configured for role '${role}'. Configure default_provider or providers.`);
     const canonicalName = ALIAS_MAP[providerName] || providerName;
-    const provider = providerModule.createProvider(providerName, providersConfig[canonicalName] || providersConfig[providerName] || {});
+    const roleCfg = config.roles?.[role] || {};
+    let provider = /** @type {any} */ (providerModule.createProvider(providerName, providersConfig[canonicalName] || providersConfig[providerName] || {}));
+    if (roleCfg.fallback_model) {
+      provider = new providerModule.FallbackProvider(provider, [roleCfg.fallback_model, ...(Array.isArray(roleCfg.fallback) ? roleCfg.fallback : [])]);
+    }
     return { name: providerName, provider };
   };
   const roleProviders = {};
@@ -172,13 +191,61 @@ async function runPipelineInWorkspace(task, opts = {}) {
   const tokenSetting = config.budget.token_budget;
   const tokenBudget = tokenSetting === "unlimited" || tokenSetting === 0 || tokenSetting == null ? Infinity : Math.min(Number(tokenSetting) || 1, hardTokenLimit);
   const originalGoal = task;
-  const hardTimeoutMs = (Number(config.execution.timeout_hard_limit_sec) || 86400) * 1000;
+  const hardTimeoutMs = (Number(config.execution?.timeout_hard_limit_sec) || 86400) * 1000;
   const deadline = Date.now() + hardTimeoutMs;
   const budgetChars = config.execution?.context_budget_chars || DEFAULT_CONTEXT_BUDGET_CHARS;
-  const results = { cycles: [], totalTokens: { input: 0, output: 0 }, goal: originalGoal, evolution: {} };
+  const results = { cycles: [], totalTokens: { input: 0, output: 0 }, totalCost: 0, goal: originalGoal, evolution: {} };
   let confirmationGranted = false; // Track whether user approved changes for this run
   let stagnantCycles = 0;
   let lastChangeSignature = "";
+  let lastFailureCategory = undefined; // classified failure category for the current run's last failing cycle
+  let humanEscalation = false;
+
+  // Model escalation + token hard guardrail.
+  // Escalation moves the "work" adapter up the model-tier chain on repeated
+  // failures or high-complexity errors (e.g. TYPE_ERROR), and halts the loop
+  // with a human escalation signal when the token hard limit is approached —
+  // instead of merely compressing context and retrying.
+  const escfg = (config.execution && config.execution.escalation) || {};
+  const failureAnalyzer = new FailureAnalyzer();
+  const workProviderName = resolveProviderName(config, "work", opts.providerOverride) || defaultProvider;
+  const workCanonical = ALIAS_MAP[workProviderName] || workProviderName;
+  const escalationEngine = new EscalationEngine({
+    failureThreshold: Number(escfg.failure_threshold) || 2,
+    tokenHardLimit: hardTokenLimit,
+    tokenStopRatio: Number(escfg.token_stop_ratio) || 0.9,
+    escalationModels: escfg.models || {},
+    role: "work",
+    modelResolver: (targetTier) => {
+      const m = findEscalationModel(workCanonical, targetTier);
+      return m ? m.id : null;
+    },
+  });
+
+  /** Apply a model-tier escalation to the work role. */
+  const escalateWorkRole = (targetTier, model) => {
+    const roleCfg = config.roles.work || {};
+    if (model) {
+      roleCfg.model = model;
+      console.log(`  ⚡ Escalating work model → ${model} (tier: ${targetTier})`);
+    } else {
+      // No catalog model for this provider — enable reasoning/thinking instead.
+      roleCfg.effort = "high";
+      roleCfg.thinking = "enabled";
+      roleCfg.thinking_budget = roleCfg.thinking_budget || 20000;
+      console.log(`  ⚡ Escalating work to high-effort/reasoning mode (tier: ${targetTier})`);
+    }
+  };
+
+  // Cost accumulation — uses optional per-provider pricing from minitok.yml
+  // (providers.<name>.pricing = { input_per_mtok, output_per_mtok } in USD).
+  const addCost = (role, tokens) => {
+    const pricing = pricingFor(roleProviders[role]?.name);
+    if (!pricing) return 0;
+    const cost = providerModule._estimateCost(tokens, pricing).total;
+    results.totalCost += cost;
+    return cost;
+  };
 
   // Self-evolution: adapt policy from past outcomes
   const knowledgeStore = new KnowledgeStore(opts.knowledgePath);
@@ -220,10 +287,17 @@ async function runPipelineInWorkspace(task, opts = {}) {
       console.log("\n⏱️  Timeout hard limit reached. Stopping.");
       break;
     }
-    // 💰 Token budget cap — prevent runaway LLM usage
+    // 💰 Token budget cap — prevent runaway LLM usage.
     const totalUsed = results.totalTokens.input + results.totalTokens.output;
     if (totalUsed >= tokenBudget || totalUsed >= hardTokenLimit) {
-      console.log(`\n💰 Token budget reached (${totalUsed.toLocaleString()} / ${tokenBudget.toLocaleString()}). Stopping.`);
+      if (escalationEngine.shouldStop(totalUsed)) {
+        // Hard guardrail: beyond context compression, stop and escalate to a human.
+        humanEscalation = true;
+        lastFailureCategory = "timeout";
+        console.log(`\n🙋 Token HARD limit reached (${totalUsed.toLocaleString()} / ${hardTokenLimit.toLocaleString()}). Stopping and escalating to a human reviewer — not merely compressing context.`);
+      } else {
+        console.log(`\n💰 Token budget reached (${totalUsed.toLocaleString()} / ${tokenBudget.toLocaleString()}). Stopping.`);
+      }
       break;
     }
 
@@ -249,15 +323,22 @@ async function runPipelineInWorkspace(task, opts = {}) {
     const intelResult = await intel(roleProviders.intel.provider, task, repoContext, roleOpts("intel"));
     results.totalTokens.input += intelResult.tokens?.input || 0;
     results.totalTokens.output += intelResult.tokens?.output || 0;
+    addCost("intel", intelResult.tokens);
 
     // Phase 2: Plan
     console.log("  📋 Planning...");
     const planResult = await plan(roleProviders.plan.provider, task, repoContext, { ...roleOpts("plan"), intelligence: intelResult.intelligence });
     results.totalTokens.input += planResult.tokens?.input || 0;
     results.totalTokens.output += planResult.tokens?.output || 0;
+    addCost("plan", planResult.tokens);
     console.log(`     Plan: ${planResult.plan.error ? "❌ " + planResult.plan.error : "✅ " + (planResult.plan.steps?.length || 0) + " steps"}`);
 
     if (planResult.plan.error) {
+      const _pfCat = failureAnalyzer.categorize(planResult.plan.error || "");
+      lastFailureCategory = _pfCat;
+      const _pfRec = escalationEngine.recordCycleOutcome(originalGoal, { success: false, category: _pfCat, tokens: (intelResult.tokens?.input || 0) + (intelResult.tokens?.output || 0) });
+      if (_pfRec.stop) { console.log(`\n${_pfRec.stopReason}`); if (_pfRec.humanEscalation) humanEscalation = true; break; }
+      if (_pfRec.escalate) escalateWorkRole(_pfRec.targetTier, _pfRec.model);
       results.cycles.push({ cycle, plan: planResult.plan, status: "plan_failed" });
       continue;
     }
@@ -267,9 +348,15 @@ async function runPipelineInWorkspace(task, opts = {}) {
     const implResult = await implement(roleProviders.work.provider, planResult, repoContext, roleOpts("work"));
     results.totalTokens.input += implResult.tokens?.input || 0;
     results.totalTokens.output += implResult.tokens?.output || 0;
+    addCost("work", implResult.tokens);
 
     if (implResult.changes.error) {
       console.log(`     Implement: ❌ ${implResult.changes.error}`);
+      const _icCat = failureAnalyzer.categorize(implResult.changes.error || "");
+      lastFailureCategory = _icCat;
+      const _icRec = escalationEngine.recordCycleOutcome(originalGoal, { success: false, category: _icCat, tokens: (intelResult.tokens?.input || 0) + (intelResult.tokens?.output || 0) + (planResult.tokens?.input || 0) + (planResult.tokens?.output || 0) });
+      if (_icRec.stop) { console.log(`\n${_icRec.stopReason}`); if (_icRec.humanEscalation) humanEscalation = true; break; }
+      if (_icRec.escalate) escalateWorkRole(_icRec.targetTier, _icRec.model);
       results.cycles.push({ cycle, plan: planResult.plan, implement: implResult.changes, status: "impl_failed" });
       continue;
     }
@@ -300,6 +387,7 @@ async function runPipelineInWorkspace(task, opts = {}) {
     const verifyResult = await verify(roleProviders.review.provider, task, { changes: implResult.changes, check: checkResult }, repoRoot, roleOpts("review"));
     results.totalTokens.input += verifyResult.tokens?.input || 0;
     results.totalTokens.output += verifyResult.tokens?.output || 0;
+    addCost("review", verifyResult.tokens);
     const reviewVerdict = verifyResult.review.verdict || "UNKNOWN";
     const checkPassed = checkResult.passed;
     const verdict = checkPassed ? reviewVerdict : "REJECT";
@@ -329,6 +417,26 @@ async function runPipelineInWorkspace(task, opts = {}) {
       },
       status: verdict,
     });
+
+    // ---- Model escalation + token hard guardrail ----
+    // Classify this cycle's failure and drive escalation: after N successive
+    // failures (or a high-complexity error such as TYPE_ERROR) the work
+    // adapter is promoted to a higher-tier/reasoning model; when the token
+    // hard limit is approached the loop halts and escalates to a human
+    // rather than continuing to compress context and retry.
+    const cycleTokens = (intelResult.tokens?.input || 0) + (planResult.tokens?.input || 0) + (implResult.tokens?.input || 0) + (verifyResult.tokens?.input || 0)
+      + (intelResult.tokens?.output || 0) + (planResult.tokens?.output || 0) + (implResult.tokens?.output || 0) + (verifyResult.tokens?.output || 0);
+    const failureEvidence = `${checkResult.evidence?.output || ""}\n${(verifyResult.review?.findings || []).map(f => f.message || "").join("\n")}\n${implResult.changes?.error || ""}`.trim();
+    const failureCategory = failureEvidence ? failureAnalyzer.categorize(failureEvidence) : "unknown";
+    const cycleSuccess = verdict === "APPROVE";
+    if (!cycleSuccess) lastFailureCategory = failureCategory;
+    const escRec = escalationEngine.recordCycleOutcome(originalGoal, { success: cycleSuccess, category: failureCategory, tokens: cycleTokens });
+    if (escRec.stop) {
+      console.log(`\n${escRec.stopReason}`);
+      if (escRec.humanEscalation) { humanEscalation = true; lastFailureCategory = "timeout"; }
+      break;
+    }
+    if (escRec.escalate) escalateWorkRole(escRec.targetTier, escRec.model);
 
     // If approved, goal-directed: check if overall goal is achieved
     if (verdict === "APPROVE" && (verifyResult.review.confidence || 0) >= 0.8) {
@@ -372,15 +480,19 @@ async function runPipelineInWorkspace(task, opts = {}) {
 
   // Self-evolution: record outcome
   const totalTokens = results.totalTokens.input + results.totalTokens.output;
-  knowledgeStore.record({
+  const uploadSafeCategory = lastFailureCategory && ALLOWED_FIELDS.failure_category.values.includes(lastFailureCategory) ? lastFailureCategory : undefined;
+  knowledgeStore.record(/** @type {any} */ ({
+    project: path.resolve(repoRoot),
     goal: originalGoal,
     status: success ? "success" : "failure",
     cycles: results.cycles.length,
     total_tokens: totalTokens,
+    total_cost: Math.round((results.totalCost || 0) * 10000) / 10000,
     duration_ms: elapsed,
     files_changed: results.cycles.reduce((sum, c) => sum + (c.implement?.files_changed || 0), 0),
-    summary: `${results.cycles.length} cycles, ${success ? "success" : "failure"}`,
-  });
+    failure_category: lastFailureCategory,
+     summary: `${results.cycles.length} cycles, ${success ? "success" : "failure"}`,
+   }));
   results.evolution.knowledge_size = knowledgeStore.size;
 
   // M14: Attempt evolution upload (non-blocking, errors swallowed).
@@ -393,7 +505,7 @@ async function runPipelineInWorkspace(task, opts = {}) {
     duration_ms: elapsed,
     files_changed: results.cycles.reduce((sum, c) => sum + (c.implement?.files_changed || 0), 0),
     total_tokens: totalTokens,
-    failure_category: undefined,
+    failure_category: uploadSafeCategory,
   };
   try {
     const creds = _loadUploadCredentials();
@@ -408,11 +520,16 @@ async function runPipelineInWorkspace(task, opts = {}) {
   }
 
   const elapsedSec = (elapsed / 1000).toFixed(1);
-  console.log(`\n📊 Summary: ${results.cycles.length} cycles, ${totalTokens.toLocaleString()} tokens (${results.totalTokens.input.toLocaleString()} in + ${results.totalTokens.output.toLocaleString()} out), ${elapsedSec}s`);
+  const costNote = results.totalCost > 0 ? `, ~$${results.totalCost.toFixed(4)}` : "";
+  console.log(`\n📊 Summary: ${results.cycles.length} cycles, ${totalTokens.toLocaleString()} tokens (${results.totalTokens.input.toLocaleString()} in + ${results.totalTokens.output.toLocaleString()} out)${costNote}, ${elapsedSec}s`);
   console.log(`🧬 Evolution: ${knowledgeStore.size} outcomes recorded`);
 
   results.success = success;
-  writeContract(repoRoot, { status: success ? "completed" : "failed", goal: originalGoal, verify_command: config.validation?.script_path || "VERIFY_CMD.sh", cycles: results.cycles.length, success });
+  results.humanEscalation = humanEscalation;
+  if (humanEscalation) {
+    console.log(`\n🙋 Human escalation engaged: the token hard limit was reached. Manual review is required.`);
+  }
+  writeContract(repoRoot, { status: success ? "completed" : "failed", goal: originalGoal, verify_command: config.validation?.script_path || "VERIFY_CMD.sh", cycles: results.cycles.length, success, human_escalation: humanEscalation });
   try {
     await recordRunEvidence({
       workspaceRoot: repoRoot,
@@ -440,15 +557,62 @@ async function runPipelineInWorkspace(task, opts = {}) {
 async function runPipeline(task, opts = {}) {
   if (opts.isolatedWorkspace) return runPipelineInWorkspace(task, opts);
   const { createIsolatedWorkspace, applyWorkspaceDiff, removeIsolatedWorkspace } = require("../workspace/isolation");
+  const { acquireRunLock } = require("../state/run-lock");
   const repoRoot = opts.repoRoot || process.cwd();
   if (!git.isGitRepo(repoRoot)) throw new Error(`Not a git repository: ${repoRoot}`);
-  const isolated = createIsolatedWorkspace(repoRoot, opts.isolationRoot);
+  const runLock = acquireRunLock(repoRoot);
+  let isolated;
   try {
+    isolated = createIsolatedWorkspace(repoRoot, opts.isolationRoot);
+    // Heal the REAL repository's contract: a contract still marked "running"
+    // here belongs to a crashed predecessor run (we hold the run lock now).
+    // The clone's own contract is irrelevant — .minitok/ is gitignored, so
+    // the clone never contains the real one.
+    const { readContract: readRealContract, writeContract: writeRealContract } = require("../state/contracts");
+    const realContract = readRealContract(repoRoot);
+    if (realContract && realContract.status === "running" && realContract.updated_at) {
+      writeRealContract(repoRoot, { ...realContract, status: "interrupted" });
+    }
     const result = await runPipelineInWorkspace(task, { ...opts, repoRoot: isolated.path, isolatedWorkspace: true });
-    if (result.success && !opts.dryRun) applyWorkspaceDiff(repoRoot, isolated.path);
-    return { ...result, isolation: { path: isolated.path, applied: result.success && !opts.dryRun } };
+    let applied = false;
+    if (result.success && !opts.dryRun) {
+      try {
+        applyWorkspaceDiff(repoRoot, isolated.path);
+        applied = true;
+      } catch (applyError) {
+        // Do NOT discard paid pipeline output: the patch is preserved at
+        // .minitok/last-run.patch (see isolation.js) — surface it clearly.
+        applyError.message = `${applyError.message}\nThe run itself succeeded; only the final merge into your repository failed.`;
+        throw applyError;
+      }
+    } else if (!result.success && !opts.dryRun) {
+      // A run that ended in REJECT/verification-failure still produced paid
+      // work. Preserve the generated diff so the customer can inspect or
+      // salvage it instead of silently losing everything with the clone.
+      try {
+        const { preserveWorkspaceDiff } = require("../workspace/isolation");
+        preserveWorkspaceDiff(repoRoot, isolated.path);
+      } catch {}
+    }
+    // Propagate run evidence out of the disposable clone — the default path
+    // removes the isolated workspace, which would otherwise destroy
+    // .minitok/evidence/ before it reaches the real repository (README:39-41).
+    try {
+      const evidencePath = path.join(isolated.path, ".minitok", "evidence", "runs", "latest.json");
+      const evidence = JSON.parse(fs.readFileSync(evidencePath, "utf-8"));
+      if (evidence && evidence.run_id) {
+        await recordRunEvidence({ workspaceRoot: repoRoot, ...evidence });
+      }
+    } catch {
+      // Evidence propagation is best-effort and must never fail the run.
+    }
+    return { ...result, isolation: { path: isolated.path, applied } };
   } finally {
-    removeIsolatedWorkspace(isolated.path);
+    try {
+      if (isolated) removeIsolatedWorkspace(isolated.path);
+    } finally {
+      runLock.release();
+    }
   }
 }
 

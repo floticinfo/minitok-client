@@ -1,7 +1,7 @@
 node_modules/
 *.tgz
 .DS_Store
-_last_run.json
+last-run.json
 .env
 .env.*
 *.log

@@ -11,7 +11,16 @@ const os = require("os");
 const yaml = require("js-yaml");
 const { ConfigError } = require("../core/errors");
 
-const ENV_PREFIX = "minitok_";
+const ENV_ALLOWLIST = new Set([
+  "minitok_offline", "minitok_default_provider", "minitok_server_url",
+  "minitok_project_name", "minitok_project_stack",
+  "minitok_budget_max_cycles", "minitok_budget_token_budget", "minitok_budget_max_cycles_hard_limit",
+  "minitok_budget_token_hard_limit", "minitok_budget_stagnation_limit",
+  "minitok_execution_max_retries", "minitok_execution_timeout_sec", "minitok_execution_retry_hard_limit",
+  "minitok_execution_timeout_hard_limit_sec", "minitok_execution_retry_backoff_sec", "minitok_execution_retry_max_sec",
+  "minitok_execution_research_enabled", "minitok_validation_enabled", "minitok_validation_script_path",
+  "minitok_validation_timeout_ms", "minitok_validation_confidence_threshold", "minitok_validation_max_changed_files",
+]);
 const _ROLE_KEYS = new Set(["plan", "review", "work", "intel"]);
 
 const DEFAULTS = {
@@ -42,12 +51,18 @@ const DEFAULTS = {
     search: { web: { endpoint: "", api_key: "" }, github: { token: "", base: "" } },
   },
   validation: { enabled: true, script_path: "VERIFY_CMD.mjs", timeout_ms: 120000, confidence_threshold: 0.8, max_changed_files: 20 },
+  commit: { enabled: false, auto_message: true },
+  security: { blocked_extensions: [".env", ".pem", ".key", ".p12", ".pfx"] },
 };
 
+const FORBIDDEN_KEYS = new Set(["__proto__", "prototype", "constructor"]);
+
 function deepMerge(base, override) {
-  const result = { ...base };
+  if (!override || typeof override !== "object" || Array.isArray(override)) return base;
+  const result = Object.assign(Object.create(null), base || {});
   for (const [key, value] of Object.entries(override)) {
-    if (key in result && typeof result[key] === "object" && !Array.isArray(result[key]) && typeof value === "object" && !Array.isArray(value)) {
+    if (FORBIDDEN_KEYS.has(key)) throw new ConfigError(`Forbidden configuration key: ${key}`);
+    if (Object.prototype.hasOwnProperty.call(result, key) && result[key] && typeof result[key] === "object" && !Array.isArray(result[key]) && value && typeof value === "object" && !Array.isArray(value)) {
       result[key] = deepMerge(result[key], value);
     } else {
       result[key] = value;
@@ -75,8 +90,8 @@ function coerceValue(value) {
 function loadEnvVars() {
   const result = {};
   for (const [key, value] of Object.entries(process.env)) {
-    if (!key.startsWith(ENV_PREFIX)) continue;
-    const configKey = key.slice(ENV_PREFIX.length).toLowerCase();
+    if (!ENV_ALLOWLIST.has(key.toLowerCase())) continue;
+    const configKey = key.slice("minitok_".length).toLowerCase();
     const parts = configKey.split("_");
     let nested = result;
     for (let i = 0; i < parts.length - 1; i++) {
@@ -105,7 +120,10 @@ function loadYaml(filePath) {
     const data = fs.readFileSync(filePath, "utf-8");
     // 🔒 Use safe schema to prevent YAML code execution attacks (!!js/function etc.)
     const parsed = yaml.load(data, { schema: yaml.DEFAULT_SAFE_SCHEMA });
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+    if (parsed == null) return {};
+    if (typeof parsed !== "object" || Array.isArray(parsed)) throw new ConfigError("Configuration root must be a mapping");
+    deepMerge({}, parsed);
+    return parsed;
   } catch (e) {
     if (e.code === "ENOENT") return {};
     throw new ConfigError(`Invalid YAML in ${filePath}: ${e.message}`);
@@ -116,6 +134,15 @@ function resolveProviderName(config, role, override) {
   const providers = config?.providers || {};
   const roleConfig = config?.roles?.[role] || {};
   return override || roleConfig.provider || roleConfig.adapter || config?.default_provider || Object.keys(providers)[0] || "";
+}
+
+function validateConfig(config) {
+  if (!config || typeof config !== "object" || Array.isArray(config)) throw new ConfigError("Configuration must be a mapping");
+  if (config.providers !== undefined && (typeof config.providers !== "object" || Array.isArray(config.providers))) throw new ConfigError("providers must be a mapping");
+  if (config.roles !== undefined && (typeof config.roles !== "object" || Array.isArray(config.roles))) throw new ConfigError("roles must be a mapping");
+  if (config.validation?.script_path !== undefined && typeof config.validation.script_path !== "string") throw new ConfigError("validation.script_path must be a string");
+  if (config.security?.blocked_extensions !== undefined && (!Array.isArray(config.security.blocked_extensions) || config.security.blocked_extensions.some(value => typeof value !== "string"))) throw new ConfigError("security.blocked_extensions must be an array of strings");
+  return config;
 }
 
 function loadConfig(configPath, overrides) {
@@ -151,7 +178,7 @@ function loadConfig(configPath, overrides) {
 
   // Merge with defaults
   const config = deepMerge(DEFAULTS, raw);
-  return config;
+  return validateConfig(config);
 }
 
-module.exports = { loadConfig, deepMerge, coerceValue, resolveProviderName, DEFAULTS };
+module.exports = { loadConfig, deepMerge, coerceValue, resolveProviderName, validateConfig, DEFAULTS };

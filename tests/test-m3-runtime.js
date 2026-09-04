@@ -1,19 +1,40 @@
-import { describe, it } from 'node:test';
-import assert from 'node:assert/strict';
-import http from 'node:http';
-import os from 'node:os';
-import path from 'node:path';
-import fs from 'node:fs';
+const { describe, it } = require('node:test');
+const assert = require('node:assert/strict');
+const http = require('node:http');
+const os = require('node:os');
+const path = require('node:path');
+const fs = require('node:fs');
+const { spawn, execFileSync } = require('node:child_process');
 
-import { createRuntimeServices } from '../src/runtime/index.js';
-import { KnowledgeService } from '../src/runtime/knowledge.js';
-import { AnalysisService } from '../src/runtime/analysis.js';
-import { CompactService } from '../src/runtime/compact.js';
-import { ObservationService, VALID_EVENT_TYPES } from '../src/runtime/observations.js';
-import { RuntimeServer } from '../src/runtime/server.js';
-import { getToolDefinitions, getToolHandler } from '../src/mcp/tools.js';
-import auditModule from '../src/runtime/audit.js';
-const { AuditService } = auditModule;
+const { createRuntimeServices } = require('../src/runtime/index.js');
+const { KnowledgeService } = require('../src/runtime/knowledge.js');
+const { AnalysisService } = require('../src/runtime/analysis.js');
+const { CompactService } = require('../src/runtime/compact.js');
+const { ObservationService, VALID_EVENT_TYPES } = require('../src/runtime/observations.js');
+const { RuntimeServer, NONCE_PATTERN } = require('../src/runtime/server.js');
+const { _waitForExit, _processMatches } = require('../src/cli/commands/runtime.js');
+const { getToolDefinitions, getToolHandler } = require('../src/mcp/tools.js');
+const { AuditService } = require('../src/runtime/audit.js');
+
+function tempKnowledgePath(prefix = "m3-knowledge-") {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  return { dir, file: path.join(dir, "outcomes.json") };
+}
+
+function runtimeFixture(prefix = "m3-runtime-") {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  return {
+    dir,
+    runtimeDir: dir,
+    knowledgePath: path.join(dir, "knowledge.json"),
+    pidFile: path.join(dir, "runtime.pid"),
+    tokenFile: path.join(dir, "runtime.token"),
+    auditPath: path.join(dir, "audit.jsonl"),
+    evidenceDirectory: path.join(dir, "evidence"),
+    observationDir: path.join(dir, "observations"),
+    entitlementDir: path.join(dir, "entitlement"),
+  };
+}
 
 function httpFetch(url) {
   return new Promise((resolve) => {
@@ -44,9 +65,34 @@ function httpPost(url, body) {
   });
 }
 
+describe("runtime process identity", () => {
+  it("rejects a live unrelated Unix PID", { skip: process.platform === "win32" }, () => {
+    const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+    try {
+      assert.equal(_processMatches({ pid: child.pid }), false);
+    } finally {
+      try { process.kill(child.pid, "SIGTERM"); } catch {}
+    }
+  });
+
+  it("rejects a replacement process even when the PID is live", { skip: process.platform === "win32" }, () => {
+    const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+    try {
+      assert.equal(_processMatches({ pid: child.pid }), false);
+    } finally {
+      try { process.kill(child.pid, "SIGTERM"); } catch {}
+    }
+  });
+});
+
 describe("M3 Runtime Services", () => {
+  function services() {
+    const temp = tempKnowledgePath();
+    return { svc: createRuntimeServices({ knowledgePath: temp.file }), temp };
+  }
+
   it("creates all 8 services", () => {
-    const svc = createRuntimeServices();
+    const { svc, temp } = services();
     assert.ok(svc.knowledge instanceof KnowledgeService);
     assert.ok(svc.analysis instanceof AnalysisService);
     assert.ok(svc.compact instanceof CompactService);
@@ -55,17 +101,18 @@ describe("M3 Runtime Services", () => {
     assert.ok(svc.audit);
     assert.ok(svc.entitlement);
     assert.ok(svc.observation instanceof ObservationService);
+    fs.rmSync(temp.dir, { recursive: true, force: true });
   });
 
   it("knowledge query returns outcomes", () => {
-    const svc = createRuntimeServices();
+    const { svc } = services();
     const r = svc.knowledge.query({ limit: 5 });
     assert.ok(Array.isArray(r.outcomes));
     assert.equal(typeof r.total, "number");
   });
 
   it("knowledge record stores outcome", () => {
-    const svc = createRuntimeServices();
+    const svc = createRuntimeServices({ knowledgePath: tempKnowledgePath().file });
     const r = svc.knowledge.record({ goal: "test-m3-" + Date.now(), status: "success", cycles: 1, summary: "m3 test" });
     assert.equal(r.recorded, true);
     assert.equal(typeof r.total, "number");
@@ -73,21 +120,21 @@ describe("M3 Runtime Services", () => {
   });
 
   it("analysis analyze returns patterns", () => {
-    const svc = createRuntimeServices();
+    const svc = createRuntimeServices({ knowledgePath: tempKnowledgePath().file });
     const r = svc.analysis.analyze();
     assert.ok(Array.isArray(r.patterns));
     assert.ok(Array.isArray(r.recommendations));
   });
 
   it("analysis recommend returns policy", () => {
-    const svc = createRuntimeServices();
+    const svc = createRuntimeServices({ knowledgePath: tempKnowledgePath().file });
     const r = svc.analysis.recommend(null, { max_cycles: 3 });
     assert.ok(r.recommended);
     assert.ok(Array.isArray(r.reasons));
   });
 
   it("compact compacts long text", () => {
-    const svc = createRuntimeServices();
+    const svc = createRuntimeServices({ knowledgePath: tempKnowledgePath().file });
     const text = "x".repeat(50000);
     const r = svc.compact.compact(text, { budget_chars: 1000 });
     assert.ok(r.compacted);
@@ -96,14 +143,14 @@ describe("M3 Runtime Services", () => {
   });
 
   it("compact does not compact short text", () => {
-    const svc = createRuntimeServices();
+    const svc = createRuntimeServices({ knowledgePath: tempKnowledgePath().file });
     const r = svc.compact.compact("hello", { budget_chars: 1000 });
     assert.equal(r.compacted, false);
     assert.equal(r.text, "hello");
   });
 
   it("entitlement status returns valid structure", async () => {
-    const svc = createRuntimeServices();
+    const svc = createRuntimeServices({ knowledgePath: tempKnowledgePath().file });
     const r = await svc.entitlement.status();
     assert.equal(typeof r.allowed, "boolean");
     assert.equal(typeof r.state, "string");
@@ -111,22 +158,23 @@ describe("M3 Runtime Services", () => {
   });
 
   it("audit service logs and reads", () => {
-    const tmpFile = path.join(os.tmpdir(), "m3-test-audit-" + Date.now() + ".jsonl");
+    const fixture = runtimeFixture("m3-audit-");
     try {
-      const audit = new AuditService(tmpFile);
+      const audit = new AuditService(fixture.auditPath);
       audit.log({ action: "test", file: "test.js" });
       const entries = audit.recent(10);
       assert.ok(entries.length >= 1);
       assert.equal(entries[entries.length - 1].action, "test");
     } finally {
-      try { fs.unlinkSync(tmpFile); } catch {}
+      fs.rmSync(fixture.dir, { recursive: true, force: true });
     }
   });
 });
 
 describe("M3 Observation Service", () => {
   it("ingests valid events", () => {
-    const obs = new ObservationService({ storageDir: os.tmpdir() + "/m3-obs-test" });
+    const fixture = runtimeFixture("m3-observation-");
+    const obs = new ObservationService({ storageDir: fixture.observationDir });
     const r = obs.ingest({ project: "test-proj", events: [
       { type: "file_modified", path: "src/a.js", action: "modify" },
       { type: "test_result", command: "npm test", passed: true },
@@ -136,14 +184,15 @@ describe("M3 Observation Service", () => {
   });
 
   it("rejects invalid event types", () => {
-    const obs = new ObservationService({ storageDir: os.tmpdir() + "/m3-obs-test2" });
+    const fixture = runtimeFixture("m3-observation-invalid-");
+    const obs = new ObservationService({ storageDir: fixture.observationDir });
     const r = obs.ingest({ events: [{ type: "invalid_type" }] });
     assert.equal(r.accepted, 0);
     assert.equal(r.errors.length, 1);
   });
 
   it("handles empty events array", () => {
-    const obs = new ObservationService();
+    const obs = new ObservationService({ storageDir: runtimeFixture("m3-observation-empty-").observationDir });
     const r = obs.ingest({ events: [] });
     assert.equal(r.accepted, 0);
   });
@@ -159,44 +208,66 @@ describe("M3 Observation Service", () => {
 describe("M3 HTTP Server", () => {
   let server;
 
+  it("reclaims a stale runtime lock after a crash", async () => {
+    const temp = runtimeFixture("m3-server-stale-lock-");
+    const lockFile = path.join(temp.dir, "runtime.pid.lock");
+    fs.writeFileSync(lockFile, JSON.stringify({ pid: 999999999, nonce: "crashed", startedAt: new Date().toISOString() }) + "\n", "utf8");
+    const recovered = new RuntimeServer({ ...temp, port: 0, authRequired: false, entitlementRequired: false });
+    await recovered.start();
+    assert.equal(JSON.parse(fs.readFileSync(lockFile, "utf8")).pid, process.pid);
+    await recovered.stop();
+    fs.rmSync(temp.dir, { recursive: true, force: true });
+  });
+
+  it("does not release a replacement runtime lock", () => {
+    const temp = runtimeFixture("m3-server-lock-ownership-");
+    const first = new RuntimeServer({ ...temp, authRequired: false, entitlementRequired: false });
+    first._acquireLock();
+    fs.writeFileSync(temp.lockFile || path.join(temp.dir, "runtime.pid.lock"), JSON.stringify({ pid: process.pid, nonce: "replacement", startedAt: new Date().toISOString() }) + "\n", "utf8");
+    first._releaseLock();
+    assert.equal(fs.existsSync(path.join(temp.dir, "runtime.pid.lock")), true);
+    fs.rmSync(temp.dir, { recursive: true, force: true });
+  });
+
   it("starts on localhost", async () => {
-    server = new RuntimeServer({ port: 45999, knowledgePath: os.tmpdir() + "/m3-knowledge-test" });
+    const temp = runtimeFixture("m3-server-");
+    server = new RuntimeServer({ ...temp, port: 0, authRequired: false, entitlementRequired: false });
     await server.start();
-    assert.equal(server.port, 45999);
+    assert.ok(server.port > 0);
   });
 
   it("GET /health returns 200", async () => {
-    const r = await httpFetch("http://127.0.0.1:45999/health");
+    const r = await httpFetch(`http://127.0.0.1:${server.port}/health`);
     assert.equal(r.status, 200);
     assert.equal(r.data.status, "ok");
   });
 
   it("GET /api/v1/status returns entitlement + knowledge", async () => {
-    const r = await httpFetch("http://127.0.0.1:45999/api/v1/status");
+    const r = await httpFetch(`http://127.0.0.1:${server.port}/api/v1/status`);
     assert.equal(r.status, 200);
     assert.equal(typeof r.data.entitlement.valid, "boolean");
     assert.equal(typeof r.data.knowledge.outcomes, "number");
   });
 
   it("POST /api/v1/knowledge/query works", async () => {
-    const r = await httpPost("http://127.0.0.1:45999/api/v1/knowledge/query", {});
+    const r = await httpPost(`http://127.0.0.1:${server.port}/api/v1/knowledge/query`, {});
     assert.equal(r.status, 200);
     assert.ok(Array.isArray(r.data.outcomes));
   });
 
   it("POST /api/v1/context/compact works", async () => {
-    const r = await httpPost("http://127.0.0.1:45999/api/v1/context/compact", { text: "hello" });
+    const r = await httpPost(`http://127.0.0.1:${server.port}/api/v1/context/compact`, { text: "hello" });
     assert.equal(r.status, 200);
     assert.equal(r.data.text, "hello");
   });
 
   it("POST /api/v1/context/compact rejects missing text", async () => {
-    const r = await httpPost("http://127.0.0.1:45999/api/v1/context/compact", {});
+    const r = await httpPost(`http://127.0.0.1:${server.port}/api/v1/context/compact`, {});
     assert.equal(r.status, 400);
   });
 
   it("POST /api/v1/observations/ingest works", async () => {
-    const r = await httpPost("http://127.0.0.1:45999/api/v1/observations/ingest", {
+    const r = await httpPost(`http://127.0.0.1:${server.port}/api/v1/observations/ingest`, {
       project: "test", events: [{ type: "file_modified", path: "a.js", action: "modify" }],
     });
     assert.equal(r.status, 200);
@@ -204,12 +275,24 @@ describe("M3 HTTP Server", () => {
   });
 
   it("GET unknown route returns 404", async () => {
-    const r = await httpFetch("http://127.0.0.1:45999/api/v1/unknown");
+    const r = await httpFetch(`http://127.0.0.1:${server.port}/api/v1/unknown`);
     assert.equal(r.status, 404);
   });
 
   it("stops cleanly", async () => {
     await server.stop();
+  });
+
+  it("confirms taskkill termination on Windows", { skip: process.platform !== "win32" }, () => {
+    const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { windowsHide: true, stdio: "ignore" });
+    try {
+      execFileSync("taskkill", ["/PID", String(child.pid), "/T", "/F"], { stdio: "ignore" });
+      assert.equal(_waitForExit(child.pid), true);
+    } finally {
+      if (_waitForExit(child.pid, 1) === false) {
+        try { execFileSync("taskkill", ["/PID", String(child.pid), "/T", "/F"], { stdio: "ignore" }); } catch {}
+      }
+    }
   });
 });
 
@@ -236,7 +319,7 @@ describe("M3 MCP Tools", () => {
   });
 
   it("knowledge_query tool works", async () => {
-    const svc = createRuntimeServices();
+    const svc = createRuntimeServices({ knowledgePath: tempKnowledgePath().file });
     const r = await getToolHandler("minitok_knowledge_query", {}, svc);
     assert.ok(r.content);
     assert.ok(r.content[0].text);
@@ -245,26 +328,26 @@ describe("M3 MCP Tools", () => {
   });
 
   it("compact tool works", async () => {
-    const svc = createRuntimeServices();
+    const svc = createRuntimeServices({ knowledgePath: tempKnowledgePath().file });
     const r = await getToolHandler("minitok_compact_context", { text: "hello world" }, svc);
     const data = JSON.parse(r.content[0].text);
     assert.equal(data.text, "hello world");
   });
 
   it("observe tool works", async () => {
-    const svc = createRuntimeServices();
+    const svc = createRuntimeServices({ knowledgePath: tempKnowledgePath().file });
     const r = await getToolHandler("minitok_observe", { events: [{ type: "file_modified", path: "a.js", action: "modify" }] }, svc);
     const data = JSON.parse(r.content[0].text);
     assert.equal(data.accepted, 1);
   });
 
   it("unknown tool throws", async () => {
-    const svc = createRuntimeServices();
+    const svc = createRuntimeServices({ knowledgePath: tempKnowledgePath().file });
     await assert.rejects(() => getToolHandler("unknown_tool", {}, svc), /Unknown tool/);
   });
 
   it("compact without text throws", async () => {
-    const svc = createRuntimeServices();
+    const svc = createRuntimeServices({ knowledgePath: tempKnowledgePath().file });
     await assert.rejects(() => getToolHandler("minitok_compact_context", {}, svc), /text is required/);
   });
 });

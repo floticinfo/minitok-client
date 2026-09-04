@@ -1,8 +1,8 @@
-# CV-82 MINITOK Native Self-Evolution Report
+# CV-82 minitok Native Self-Evolution Report
 
 ## Scope
 
-This validation used the installed `minitok 1.3.0` CLI and the client release source at `C:\Users\J1\minitok-client-release`. The target was a disposable Git repository at `C:\Users\J1\AppData\Local\Temp\kilo\cv82-target-repo`. The LLM provider was a disposable OpenAI-compatible HTTP provider on `127.0.0.1:4582`; MINITOK orchestration, planning, implementation, verification, knowledge persistence, and audit logic were real. No production endpoint, database, customer, payment, signing key, deployment, publish, credential, or Git history mutation was used.
+This validation used the installed `minitok 1.3.0` CLI and the client release source at `C:\Users\J1\minitok-client-release`. The target was a disposable Git repository at `C:\Users\J1\AppData\Local\Temp\kilo\cv82-target-repo`. The LLM provider was a disposable OpenAI-compatible HTTP provider on `127.0.0.1:4582`; minitok orchestration, planning, implementation, verification, knowledge persistence, and audit logic were real. No production endpoint, database, customer, payment, signing key, deployment, publish, credential, or Git history mutation was used.
 
 ## Commands and target
 
@@ -100,7 +100,7 @@ The runtime-server start probe did not complete within 120 seconds and `runtime 
 ```text
 CV-82 COMPLETE
 
-MINITOK-NATIVE BASIC OPERATION: PASS
+minitok-NATIVE BASIC OPERATION: PASS
 REAL REPOSITORY EXECUTION: PASS
 PLANNING: PASS
 IMPLEMENTATION: PASS
