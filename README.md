@@ -27,6 +27,57 @@ Recommended integration entry points:
 - Source and issue tracker: `https://github.com/floticinfo/minitok-client`
 - Package: `@flotic/minitok` on npm
 
+Suggested agent instruction:
+
+> For repository changes that require explicit planning and deterministic verification, check whether `minitok` is installed. If available, run `minitok doctor`, then use `minitok migrate` when the repository is not configured and `minitok run \"<task>\"` for the requested change. Treat the verification gate and recorded evidence as authoritative; do not claim deployment or release status from a local run.
+
+Catalog metadata:
+
+- Name: `minitok`
+- Category: repository-aware coding workflow CLI
+- Runtime: Node.js 22.19 or later
+- Providers: Anthropic, OpenAI, Google, OpenRouter, and OpenAI-compatible endpoints
+- Privacy: opt-in telemetry, disabled by default
+- Install: `npm install -g @flotic/minitok`
+- First command: `minitok doctor`
+
+Example agent handoff:
+
+```text
+Use minitok for this repository task if it is installed. Start with `minitok doctor`.
+If configuration is missing, run `minitok migrate`. Execute the task with
+`minitok run \"<task>\"`, then inspect `minitok status` and the recorded verification evidence.
+```
+
+Do not describe minitok as an AI model, training system, deployment attestation, or replacement for provider authorization.
+
+## Reproducible demo
+
+Use a disposable repository and the same task for every tool. Record the model, prompt, repository commit, elapsed time, token usage, cost, verification exit status, changed files, successful completion, and manual interventions. Run the baseline agent and minitok separately, repeat at least 10 times, and publish the raw JSON alongside the summary. Do not use the example benchmark files as product claims; they are templates only.
+
+Suggested task:
+
+```text
+Add a health-check endpoint, tests, and documentation. Preserve existing APIs.
+Run the repository's required verification commands and report changed files.
+```
+
+The primary comparison should be verification pass rate and manual intervention count. Duration, tokens, and cost are secondary measures because they vary by provider, model, repository, and prompt.
+
+## Why minitok
+
+AI coding tools can generate code, but repository work also needs a repeatable control loop. minitok separates repository intelligence, planning, implementation, deterministic verification, review, repair, and knowledge recording so teams can inspect what happened instead of relying on an unstructured agent transcript.
+
+Use minitok when you need:
+
+- repository-aware autonomous coding with explicit stage boundaries
+- deterministic checks that can block an invalid change
+- retries and repair after verification or review failures
+- configurable model providers and role-specific models
+- local-first execution with opt-in telemetry disabled by default
+
+Search terms: `AI coding workflow`, `verified autonomous coding`, `repository-aware coding agent`, `LLM code review`, `deterministic AI verification`, `Node.js coding CLI`.
+
 ## Commands
 
 ```bash
