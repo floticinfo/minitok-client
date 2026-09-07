@@ -15,6 +15,8 @@ function getPlanId(entitlement) {
 }
 
 function canUploadTelemetry(entitlement, consented) {
+  const status = entitlement?.subscription?.status || entitlement?.entitlement?.subscription_status || entitlement?.payload?.subscription_status;
+  if (status === "trialing") return { allowed: false, policy: getTelemetryPolicy(getPlanId(entitlement)), reason: "Trial subscriptions are not eligible for telemetry" };
   const policy = getTelemetryPolicy(getPlanId(entitlement));
   if (policy.mode === "none") return { allowed: false, policy, reason: "Telemetry is disabled for this plan" };
   if (policy.requires_consent && !consented) return { allowed: false, policy, reason: "Privacy consent not granted" };

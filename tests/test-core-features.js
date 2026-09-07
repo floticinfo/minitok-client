@@ -65,8 +65,8 @@ describe("F3: Pipeline", () => {
   it("apply error", () => { const r = require("../src/pipeline/implementer").applyChanges(tmpDir(), { error: "fail" }); assert.equal(r.applied, 0); assert.ok(r.errors.length > 0); });
   it("dry run", () => { const d = tmpDir(); require("../src/pipeline/implementer").applyChanges(d, { changes: [{ file: "x.txt", action: "create", content: "n" }] }, true); assert.ok(!fs.existsSync(p.join(d, "x.txt"))); clean(d); });
   it("modify missing", () => { const d = tmpDir(); const r = require("../src/pipeline/implementer").applyChanges(d, { changes: [{ file: "no.txt", action: "modify", content: "x" }] }); assert.equal(r.applied, 0); assert.ok(r.errors[0].includes("not found")); clean(d); });
-  it("rejects non-git", async () => { const d = tmpDir(); await assert.rejects(() => require("../src/pipeline/loop").runPipeline("t", { repoRoot: d, skipEntitlementCheck: true, knowledgePath: knowledgePath() }), /Not a git/); clean(d); });
-  it("rejects unavailable", async () => { const { execSync } = require("child_process"); const d = tmpDir(); execSync("git init", { cwd: d, stdio: "pipe" }); execSync("git config user.email t@t.com", { cwd: d, stdio: "pipe" }); execSync("git config user.name T", { cwd: d, stdio: "pipe" }); fs.writeFileSync(p.join(d, "a.txt"), "a"); execSync("git add -A", { cwd: d, stdio: "pipe" }); execSync("git commit -m init", { cwd: d, stdio: "pipe" }); await assert.rejects(() => require("../src/pipeline/loop").runPipeline("t", { repoRoot: d, providerOverride: "anthropic", skipEntitlementCheck: true, knowledgePath: knowledgePath() }), /not available|no credentials|API error/); clean(d); });
+  it("rejects non-git", async () => { const d = tmpDir(); await assert.rejects(() => require("../src/pipeline/loop").runPipeline("t", { repoRoot: d, authorization: require("../src/pipeline/test-seam").TEST_AUTHORIZATION, knowledgePath: knowledgePath() }), /Not a git/); clean(d); });
+  it("rejects unavailable", async () => { const { execSync } = require("child_process"); const d = tmpDir(); execSync("git init", { cwd: d, stdio: "pipe" }); execSync("git config user.email t@t.com", { cwd: d, stdio: "pipe" }); execSync("git config user.name T", { cwd: d, stdio: "pipe" }); fs.writeFileSync(p.join(d, "a.txt"), "a"); execSync("git add -A", { cwd: d, stdio: "pipe" }); execSync("git commit -m init", { cwd: d, stdio: "pipe" }); await assert.rejects(() => require("../src/pipeline/loop").runPipeline("t", { repoRoot: d, providerOverride: "anthropic", authorization: require("../src/pipeline/test-seam").TEST_AUTHORIZATION, knowledgePath: knowledgePath() }), /not available|no credentials|API error/); clean(d); });
   it("releases the lock when isolation setup fails", async () => {
     const { execSync } = require("child_process");
     const d = tmpDir();
@@ -79,7 +79,7 @@ describe("F3: Pipeline", () => {
     const original = isolation.createIsolatedWorkspace;
     isolation.createIsolatedWorkspace = () => { throw new Error("isolation failed"); };
     try {
-      await assert.rejects(() => require("../src/pipeline/loop").runPipeline("t", { repoRoot: d, skipEntitlementCheck: true }), /isolation failed/);
+      await assert.rejects(() => require("../src/pipeline/loop").runPipeline("t", { repoRoot: d, authorization: require("../src/pipeline/test-seam").TEST_AUTHORIZATION }), /isolation failed/);
       assert.equal(fs.existsSync(p.join(d, ".minitok", "run.lock")), false);
     } finally {
       isolation.createIsolatedWorkspace = original;
@@ -112,7 +112,7 @@ describe("F3: Pipeline", () => {
     const pm = require("../src/llm/provider"); const orig = pm.createProvider;
     pm.createProvider = (name) => { if (name === "mock") return new Mock(); return orig(name); };
     try {
-      const r = await runPipeline("Add helper", { repoRoot: d, providerOverride: "mock", skipEntitlementCheck: true, autoAccept: true, knowledgePath: knowledgePath(), overrides: { budget: { max_cycles: 1 } } });
+      const r = await runPipeline("Add helper", { repoRoot: d, providerOverride: "mock", authorization: require("../src/pipeline/test-seam").TEST_AUTHORIZATION, autoAccept: true, knowledgePath: knowledgePath(), overrides: { budget: { max_cycles: 1 } } });
       assert.equal(r.cycles.length, 1); assert.equal(r.cycles[0].status, "APPROVE");
       assert.equal(r.cycles[0].plan.steps[0].file, "helper.js");
       assert.equal(r.cycles[0].verify.confidence, 0.95); assert.ok((r.totalTokens.input + r.totalTokens.output) > 0);
@@ -143,7 +143,7 @@ describe("F3: Pipeline", () => {
     const pm = require("../src/llm/provider"); const orig = pm.createProvider;
     pm.createProvider = (name) => { if (name === "r") return new Rej(); return orig(name); };
     try {
-      const r = await runPipeline("t", { repoRoot: d, providerOverride: "r", skipEntitlementCheck: true, autoAccept: true, knowledgePath: knowledgePath(), overrides: { budget: { max_cycles: 3 } } });
+      const r = await runPipeline("t", { repoRoot: d, providerOverride: "r", authorization: require("../src/pipeline/test-seam").TEST_AUTHORIZATION, autoAccept: true, knowledgePath: knowledgePath(), overrides: { budget: { max_cycles: 3 } } });
       assert.equal(r.cycles.length, 3);
       r.cycles.forEach(c => assert.equal(c.status, "CHANGES_REQUESTED"));
     } finally { pm.createProvider = orig; clean(d); }

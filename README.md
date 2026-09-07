@@ -8,7 +8,7 @@
 npm install -g @flotic/minitok
 ```
 
-The current source release is `1.3.4`. minitok is paid software with three plans: Open, Select, and Private; there is no free plan. Configure at least one LLM provider in `minitok.yml`; role-specific providers override `default_provider`, and otherwise the first configured provider is used.
+The current published release is `1.3.5`. minitok is paid software with three canonical plans: Open, Select, and Private; there is no free plan. Open permits consented per-run telemetry, Select permits consented aggregate-only telemetry, and Private never uploads or stores telemetry. Configure at least one LLM provider in `minitok.yml`; role-specific providers override `default_provider`, and otherwise the first configured provider is used.
 
 The npm tarball includes only the runtime and end-user documentation listed by `package.json`; development and release verification scripts are not published, and source tests are not published. Release validation runs the packed-install smoke against a temporary npm prefix and executes the packaged CLI help, status, and auth status commands.
 
@@ -96,7 +96,7 @@ minitok auth customer-login <email>      # Customer account login
 minitok account login <email>             # Alias for auth customer-login
 minitok activate <activation-key>         # Bind a purchased key to this machine
 minitok license activate <key>           # Alias for activate
-minitok checkout --plan open              # Legacy checkout command
+minitok checkout --plan open              # Purchase a canonical plan
 minitok portal                            # Legacy billing portal command
 minitok activation-key                    # Legacy activation-key command
 minitok billing checkout                 # Alias for checkout
@@ -134,27 +134,27 @@ validation:
 
 After purchasing, run `minitok activate <activation-key>` once. The key is bound to the current installation; use `minitok doctor` to diagnose missing, expired, or server-rejected entitlements.
 
-Every non-dry-run pipeline execution requires the portable deterministic verification gate `VERIFY_CMD.mjs`. The command must exit with status 0 for the gate to pass; the LLM review is supplementary and cannot replace this gate. `VERIFY_CMD.sh` is retained only as a compatibility wrapper where a POSIX shell is available. `minitok migrate` creates a portable npm/pytest template.
+Every non-dry-run pipeline execution requires entitlement authorization before provider work. The legacy `skipEntitlementCheck` option is rejected; it is not a supported public or production control. Every non-dry-run pipeline execution also requires the portable deterministic verification gate `VERIFY_CMD.mjs`. The command must exit with status 0 for the gate to pass; the LLM review is supplementary and cannot replace this gate. `VERIFY_CMD.sh` is retained only as a compatibility wrapper where a POSIX shell is available. `minitok migrate` creates a portable npm/pytest template.
 
 **Windows notes:** the npm-based `VERIFY_CMD.mjs` gate works out of the box. A POSIX `VERIFY_CMD.sh` gate requires Git Bash on PATH; if it is unavailable but `VERIFY_CMD.mjs` exists, minitok automatically falls back to it. Ctrl+C aborts a run; external termination (SIGTERM) is not delivered by Windows, so prefer Ctrl+C for stopping.
 
 Pipeline state is stored under `.minitok/`. Tracked contracts are written to `.minitok/contracts/`; sanitized per-run evidence is written to `.minitok/evidence/runs/`. Concurrent `minitok run` invocations in the same workspace are rejected until the first run finishes.
 
-The entitlement gate state is a local, owner-only monotonic clock marker. Deleting or restoring it can reset local clock-rollback history; this is an inherent client-side limitation. After a successful online validation, temporary server unavailability permits a bounded offline grace period of up to seven days; the client fails closed before the first successful validation and after that window elapses. The authoritative signed entitlement, installation binding, server validation, and subscription state remain enforced. Do not delete `~/.minitok/entitlement/` as a troubleshooting step; use `minitok doctor` and `minitok activate` instead.
+The entitlement gate state is a local, owner-only monotonic clock marker. Deleting or restoring it can reset local clock-rollback history; this is an inherent client-side limitation. After a successful online validation, temporary server unavailability permits a bounded offline grace period of up to seven days; the client fails closed before the first successful validation and after that window elapses. This delay is not a subscription grace period: the authoritative signed entitlement, installation binding, server validation, and subscription state remain enforced. Do not delete `~/.minitok/entitlement/` as a troubleshooting step; use `minitok doctor` and `minitok activate` instead.
 
 ## Billing
 
 ```bash
 minitok account login user@example.com       # Alias for auth customer-login
-minitok billing checkout --plan open          # Alias for checkout
-minitok billing checkout --plan select
-minitok billing checkout --plan private
+minitok billing checkout --plan open
+minitok billing checkout --plan open
 minitok billing activation-key                # Alias for activation-key
 minitok billing portal                        # Alias for portal
 
 # Existing commands remain supported:
 minitok auth customer-login user@example.com
 minitok checkout --plan open
+minitok billing checkout --plan open
 minitok activation-key
 minitok portal
 ```
@@ -168,7 +168,7 @@ minitok exposes the same MCP JSON-RPC methods over two transports:
 - **stdio:** configure an MCP client to launch `src/runtime/stdio-entry.js` through the installed `minitok` package. The generated `minitok mcp connect <host>` configuration uses the Node executable, the packaged stdio entry point, and `MINITOK_MCP_AUTH_TOKEN_FILE` pointing to `~/.minitok/entitlement/installation-token.json`. The token file may contain either a plain token or a JSON object with a `token` field. Stdio authentication is supplied in initialize and subsequent request parameters; initialize negotiates the protocol and establishes the session, while later requests require the same valid session token.
 - **localhost HTTP:** run the local runtime with `minitok runtime start` and send JSON-RPC `POST` requests to `http://127.0.0.1:<port>/mcp` with `Content-Type: application/json`. The default port is `4578`; the runtime binds only to loopback. Read the bearer token from the owner-only token file recorded by the runtime metadata, then send `Authorization: Bearer <token>` on initialize and every later request. HTTP authentication is enforced before MCP processing, so an absent or invalid token returns HTTP `401`, including for initialize.
 
-Both transports support protocol version `2024-11-05`, tools, resources, prompts, cancellation notifications, and the same paid entitlement gate. After transport authentication, initialize returns negotiated protocol information without checking entitlement; paid methods return a JSON-RPC `PERMISSION_DENIED` error with `data.type` `ENTITLEMENT_REQUIRED` and the policy `data.state` when the local entitlement is missing, expired, malformed, or rejected by the server. HTTP therefore returns `200` with a JSON-RPC entitlement error for an authenticated initialize-then-paid-method sequence, while non-MCP HTTP routes continue to enforce entitlement before route handling. These states mean the client cannot authorize paid MCP functionality; they are not transport or authentication failures.
+Both transports support protocol version `2024-11-05`, tools, resources, prompts, cancellation notifications, and the same paid entitlement gate. Local MCP defaults to `read` permission; explicitly configure `write` for repository-changing tools and separately configure `auto_accept` when that policy is intended. Remote MCP exposes only `minitok_status` and `minitok_compact`. Authentication and entitlement enforcement are mandatory for production MCP constructors and cannot be disabled through options, environment variables, or configuration. Health and readiness endpoints remain available without those checks. After transport authentication, initialize returns negotiated protocol information without checking entitlement; paid methods return a JSON-RPC `PERMISSION_DENIED` error with `data.type` `ENTITLEMENT_REQUIRED` and the policy `data.state` when the local entitlement is missing, expired, malformed, or rejected by the server. HTTP therefore returns `200` with a JSON-RPC entitlement error for an authenticated initialize-then-paid-method sequence, while non-MCP HTTP routes continue to enforce entitlement before route handling. These states mean the client cannot authorize paid MCP functionality; they are not transport or authentication failures.
 
 Notifications omit the JSON-RPC response. Over stdio they produce no output; over HTTP a notification-only request returns `202 Accepted` with an empty body. JSON-RPC batches return one response per request or error item with an id; notifications are omitted, and an empty batch is invalid. The HTTP transport returns the responses as a JSON array, while stdio emits each response as a newline-delimited JSON value.
 
@@ -178,7 +178,7 @@ Notifications omit the JSON-RPC response. Over stdio they produce no output; ove
 
 Run `npm run stage2:parity` for deterministic local contract checks. Artifact evidence is generated independently with `npm run package:cli`, `npm run artifact:runtime`, `npm run artifact:http`, `node scripts/artifact-report.mjs extension`, and `npm run release:artifacts`. Reports classify each result as `generated`, `missing`, `stale`, or `unverified`; the authoritative VSIX is `extension/artifacts/minitok-extension-<version>.vsix`. Historical or unrelated VSIX files are reported as stale candidates and are never deleted automatically. CLI reports include the full manifest and `npm pack --dry-run --json` metadata; runtime reports include deterministic file hashes and the packaged stdio entrypoint; HTTP reports capture the loopback host, `/mcp` contract, bearer authentication, health route, and notification status. These checks do not contact production by default and do not establish publication or deployment.
 
-The local HTTP runtime is a localhost-only service bound to `127.0.0.1`; it is not a deployable remote MCP service. Remote server URLs must use HTTPS, and the production API default is `https://api.minitok.dev`. Authenticated operators can query `GET /metrics` for non-secret counters covering request failures, MCP sessions, and readiness; the endpoint never returns runtime or entitlement tokens. The fixture at `tests/fixtures/stage2-parity.json` records non-secret parity metadata only.
+The local HTTP runtime is a localhost-only service bound to `127.0.0.1`; it is not a deployable remote MCP service. Remote MCP is explicit opt-in only: `minitok mcp remote-health https://example.invalid/mcp --token <customer-jwt>` uses HTTPS `POST /mcp`, customer JWT bearer authentication, and `Mcp-Session-Id`. The remote client handshakes with `initialize` and `tools/list`, and permits only the read-only remote allowlist; local-only tools, repository paths, and installation-token files are never sent remotely. Authentication, entitlement, and protocol errors are terminal and never fall back. Fallback is permitted only for network failures and HTTP 5xx transport failures, and must be selected by the caller; the existing local stdio and localhost defaults are unchanged. Authenticated operators can query `GET /metrics` for non-secret counters covering request failures, MCP sessions, and readiness; the endpoint never returns runtime or entitlement tokens. The fixture at `tests/fixtures/stage2-parity.json` records non-secret parity metadata only.
 
 ## Commercial readiness
 

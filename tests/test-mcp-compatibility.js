@@ -3,7 +3,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { spawn } = require("node:child_process");
 const path = require("node:path");
-const { RuntimeStdio } = require("../src/runtime/stdio");
+const { RuntimeStdio } = require("../src/runtime/test-seam");
 const script = path.resolve(__dirname, "../src/runtime/stdio-entry.js");
 const authToken = "compat-test-token";
 

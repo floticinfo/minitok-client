@@ -4,7 +4,7 @@ const assert = require("node:assert/strict");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const { RuntimeStdio } = require("../src/runtime/stdio");
+const { RuntimeStdio } = require("../src/runtime/test-seam");
 const { requireApprovalPath, getToolHandler } = require("../src/mcp/tools");
 const { writeConfig, planChange } = require("../src/cli/commands/mcp");
 
@@ -62,7 +62,7 @@ test("MCP host configs launch the authenticated stdio entrypoint without a raw t
     const server = plan.data.mcpServers.minitok;
     assert.equal(server.command, process.execPath);
     assert.deepEqual(server.args, [path.resolve(__dirname, "../src/runtime/stdio-entry.js")]);
-    assert.equal(server.env.MINITOK_MCP_AUTH_TOKEN_FILE, path.join(os.homedir(), ".minitok", "entitlement", "installation-token.json"));
+    assert.equal(server.env.MINITOK_MCP_AUTH_TOKEN_FILE, path.join(os.homedir(), ".minitok", "mcp", "runtime-token.json"));
     assert.equal(Object.values(server.env).some(value => value.includes("compat-test-token")), false);
     assert.equal(JSON.stringify(server).includes("token"), true);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }

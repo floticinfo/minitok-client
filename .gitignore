@@ -2,6 +2,7 @@ node_modules/
 *.tgz
 *.vsix
 extension/artifacts/
+extension/dist/
 extension/*.vsix
 .vscode-test/
 .DS_Store
@@ -11,6 +12,7 @@ last-run.json
 *.log
 *.tmp
 release-manifest.json
+!release-manifest.json
 pack-output.txt
 reports/
 reports/**

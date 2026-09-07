@@ -19,11 +19,10 @@
  *   key_id            // string
  * }
  *
- * BACKWARD COMPATIBILITY:
- * Old entitlements (without installation_id) are still accepted for
- * validation but will be flagged as LEGACY. They retain their original
- * behavior until natural expiration. Installation binding is enforced
- * for new-format entitlements only.
+ * LEGACY ARTIFACTS:
+ * Entitlements without installation_id remain parseable and are flagged as
+ * LEGACY for migration diagnostics, but they are not runtime-authorized.
+ * Installation binding is required for runtime authorization.
  */
 
 const VALID_PLAN_IDS = ["open", "select", "private"];

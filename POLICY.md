@@ -66,7 +66,7 @@ minitok evolution disable
 
 ### 5.1 Current paid plans
 
-The current commercial contract has three paid plans: `open`, `select`, and `private`. There is no free plan. `open` permits consented per-run telemetry, `select` permits consented aggregate-only telemetry, and `private` does not upload telemetry. Entitlement is required for all paid execution.
+The current commercial contract has three canonical plan IDs: `open`, `select`, and `private`; there is no free plan. `open` permits consent-required per-run evolution uploads when the signed capability allows it, `select` permits consent-required aggregate-only telemetry, and `private` never uploads or stores telemetry. Entitlement is required for all plan-gated execution.
 
 ### 5.2 Feature flags
 

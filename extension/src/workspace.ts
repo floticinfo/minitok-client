@@ -51,14 +51,15 @@ export function mcpCommand() {
 }
 
 export function mcpEnvironment() {
-  return { ...process.env, MINITOK_MCP_AUTH_TOKEN_FILE: path.join(os.homedir(), ".minitok", "entitlement", "installation-token.json") };
+  return { ...process.env, MINITOK_MCP_AUTH_TOKEN_FILE: path.join(os.homedir(), ".minitok", "mcp", "runtime-token.json") };
 }
 
 export function mcpAuthToken() {
   const tokenFile = mcpEnvironment().MINITOK_MCP_AUTH_TOKEN_FILE;
   try {
-    const value = JSON.parse(fs.readFileSync(tokenFile, "utf8")) as { token?: unknown };
-    return typeof value.token === "string" ? value.token : undefined;
+    const value = JSON.parse(fs.readFileSync(tokenFile, "utf8")) as { token?: unknown; expires_at?: unknown; revoked_at?: unknown };
+    if (typeof value.token !== "string" || !value.token || value.revoked_at || typeof value.expires_at !== "number" || Date.now() >= value.expires_at) return undefined;
+    return value.token;
   } catch { return undefined; }
 }
 

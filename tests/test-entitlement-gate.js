@@ -89,7 +89,7 @@ describe("Gate: INVALID_SIGNATURE", () => {
 
   it("blocks tampered payload", () => {
     const artifact = signPayload(makePayload(), kp.privateKey, "test-key-1");
-    artifact.payload.plan_id = "select";
+    artifact.payload.plan_id = "private";
     const r = checkEntitlement({ _loadArtifact: () => artifact, _loadGateState: () => ({ latest_observed_at: 0, last_validated_at: null }), _saveGateState: () => {}, installationId: "12345678-1234-4123-a123-123456789abd" });
     assert.equal(r.allowed, false);
     assert.equal(r.state, GateState.INVALID_SIGNATURE);

@@ -2,16 +2,48 @@
 
 const { createRuntimeServices } = require("./index");
 const { getToolDefinitions, getToolHandler, MCP_ERROR_CODES } = require("../mcp/tools");
-const { version } = require("../../package.json");
+const packageMetadata = require("../../package.json");
+const version = typeof packageMetadata.version === "string" ? packageMetadata.version : "unknown";
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const crypto = require("crypto");
+const { readRuntimeToken } = require("../mcp/runtime-token");
+const { setOwnerOnlyPermissions } = require("../utils/file-permissions");
 
 const SUPPORTED_PROTOCOLS = ["2024-11-05"];
+const RUN_STATE_VERSION = 2;
+const RUN_STATES = new Set(["running", "completed", "failed", "cancelled", "unknown"]);
+
+function runtimeBinding(options, authToken) {
+  const explicit = options.runtimeIdentity || options.bindingId || process.env.MINITOK_MCP_RUNTIME_IDENTITY;
+  if (typeof explicit === "string" && explicit) return explicit;
+  const installation = options.installationId || process.env.MINITOK_INSTALLATION_ID;
+  if (typeof installation === "string" && installation) return installation;
+  return authToken ? crypto.createHash("sha256").update(authToken).digest("hex") : null;
+}
+
+function safeRunRecord(record, binding, migrate = false) {
+  if (!record || typeof record !== "object" || typeof record.run_id !== "string" || !record.run_id) return null;
+  const recordBinding = typeof record.binding_id === "string" ? record.binding_id : null;
+  if (recordBinding && binding && recordBinding !== binding) return null;
+  if (recordBinding && !binding) return null;
+  if (!recordBinding && !migrate) return null;
+  const state = RUN_STATES.has(record.state) ? record.state : "unknown";
+  const result = { run_id: record.run_id, state };
+  if (binding || recordBinding) result.binding_id = binding || recordBinding;
+  if (record.request_id !== undefined && (typeof record.request_id === "string" || typeof record.request_id === "number")) result.request_id = record.request_id;
+  if (record.started_at) result.started_at = record.started_at;
+  if (record.completed_at) result.completed_at = record.completed_at;
+  if (state === "running") { result.state = "unknown"; result.recovery = "interrupted"; }
+  return result;
+}
 
 function loadAuthTokenFile(filePath, fileSystem = fs) {
   if (typeof filePath !== "string" || !filePath) return null;
+  const runtime = readRuntimeToken(filePath);
+  if (runtime) return runtime.token;
+  if (filePath.endsWith("runtime-token.json")) return null;
   try {
     const value = fileSystem.readFileSync(filePath, "utf8").trim();
     if (!value) return null;
@@ -39,10 +71,12 @@ class RuntimeStdio {
     this._services = options.services || createRuntimeServices(options);
     this._fs = options.fs || fs;
     this._workspaceRoot = options.workspaceRoot || process.cwd();
-    this._permissions = new Set(String(options.permissions || process.env.MINITOK_MCP_PERMISSIONS || "read,write").split(",").map(value => value.trim()).filter(Boolean));
-    this._authRequired = options.authRequired !== false;
-    this._entitlementRequired = options.entitlementRequired !== false;
+    if (options.authRequired === false || options.entitlementRequired === false) throw new Error("MCP authentication and entitlement are mandatory");
+    this._permissions = new Set(String(options.permissions || "read").split(",").map(value => value.trim()).filter(Boolean));
+    this._authRequired = true;
+    this._entitlementRequired = true;
     this._authToken = options.authToken || process.env.MINITOK_MCP_AUTH_TOKEN || loadAuthTokenFile(options.authTokenFile || process.env.MINITOK_MCP_AUTH_TOKEN_FILE, this._fs);
+    this._bindingId = runtimeBinding(options, this._authToken);
     this._nextAuthToken = options.nextAuthToken || process.env.MINITOK_MCP_AUTH_TOKEN_NEXT || null;
     this._authExpiresAt = Number(options.authExpiresAt || process.env.MINITOK_MCP_AUTH_TOKEN_EXPIRES_AT || 0) || 0;
     this._nextAuthExpiresAt = Number(options.nextAuthExpiresAt || process.env.MINITOK_MCP_AUTH_TOKEN_NEXT_EXPIRES_AT || 0) || 0;
@@ -62,10 +96,12 @@ class RuntimeStdio {
   _loadRunState() {
     try {
       const value = JSON.parse(this._fs.readFileSync(this._runStatePath, "utf8"));
-      if (!Array.isArray(value)) throw new Error("MCP run state must be an array");
-      const records = value.filter(record => record && typeof record === "object" && typeof record.run_id === "string").map(record => record.state === "running" ? { ...record, state: "unknown", recovery: "interrupted" } : record);
+      const versionedValue = !Array.isArray(value) && value !== null && typeof value === "object" ? value : null;
+      const records = Array.isArray(value) ? value : versionedValue && versionedValue.version === RUN_STATE_VERSION && Array.isArray(versionedValue.records) ? versionedValue.records : (() => { throw new Error("MCP run state must be an array"); })();
+      const migrated = !Array.isArray(value) || !versionedValue || versionedValue.version !== RUN_STATE_VERSION;
+      const filtered = records.map(record => safeRunRecord(record, this._bindingId, migrated)).filter(Boolean);
       this._persistence = { persisted: true, error: null, operation: "load" };
-      return records;
+      return filtered;
     } catch (error) {
       if (error.code === "ENOENT") {
         this._persistence = { persisted: true, error: null, operation: "load" };
@@ -79,8 +115,9 @@ class RuntimeStdio {
     const temp = `${this._runStatePath}.tmp.${process.pid}.${crypto.randomBytes(6).toString("hex")}`;
     try {
       this._fs.mkdirSync(path.dirname(this._runStatePath), { recursive: true, mode: 0o700 });
-      const records = [...this._recoveredRuns.filter(record => !this._runs.has(record.run_id)), ...[...this._runs.values()].map(run => ({ run_id: run.runId, request_id: run.requestId, state: run.state, result: run.result || null }))].slice(-100);
-      this._fs.writeFileSync(temp, JSON.stringify(records), { flag: "wx", mode: 0o600 });
+      const records = [...this._recoveredRuns.filter(record => !this._runs.has(record.run_id)), ...[...this._runs.values()].map(run => ({ run_id: run.runId, request_id: run.requestId, state: RUN_STATES.has(run.state) ? run.state : "unknown", binding_id: this._bindingId }))].slice(-100);
+      this._fs.writeFileSync(temp, JSON.stringify({ version: RUN_STATE_VERSION, records }), { flag: "wx", mode: 0o600 });
+      setOwnerOnlyPermissions(temp);
       try {
         const fd = this._fs.openSync(temp, "r");
         try { this._fs.fsyncSync(fd); } finally { this._fs.closeSync(fd); }

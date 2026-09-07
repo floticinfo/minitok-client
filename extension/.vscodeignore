@@ -13,3 +13,10 @@ artifacts/
 rasterize-icon.cjs
 rasterize-representative.cjs
 COMMERCIAL_READINESS.md
+runtime/src/**/*.test.js
+runtime/src/**/test-seam.js
+runtime/tests/
+runtime/admin/
+runtime/.env*
+runtime/**/*secret*
+runtime/**/*token*

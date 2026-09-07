@@ -96,7 +96,7 @@ describe("CLIENT/SERVER CONTRACT — Installation Binding", () => {
     assert.equal(r.valid, false, "Different installation denied during grace");
   });
 
-  it("C6: Legacy entitlement (no installation_id) is accepted only for migration diagnostics", () => {
+  it("C6: Legacy entitlement (no installation_id) remains parseable for migration diagnostics but is not runtime-authorized", () => {
     const now = new Date(); const expires = new Date(now.getTime() + 86400000);
     const payload = { entitlement_id: "66666666-6666-4666-8666-666666666666", plan_id: "open",
       features: ["autonomous_run"], max_devices: 1, issued_at: now.toISOString(),
@@ -106,7 +106,11 @@ describe("CLIENT/SERVER CONTRACT — Installation Binding", () => {
     const sig = crypto.sign(null, Buffer.from(canonical, "utf-8"), pkObj);
     const artifact = { payload, signature: sig.toString("base64url"), key_id: "prod-key" };
     const r = verifyEntitlement(artifact, new Date());
-    assert.equal(r.valid, true, `Legacy accepted: ${r.state}`);
+    assert.equal(r.valid, true, `Legacy artifact should remain parseable: ${r.state}`);
     assert.equal(r.legacy, true);
+    const { checkEntitlement, GateState } = require("../src/entitlement/gate");
+    const gate = checkEntitlement({ _loadArtifact: () => artifact, _loadGateState: () => ({ latest_observed_at: 0, last_validated_at: null }), _saveGateState: () => {} });
+    assert.equal(gate.allowed, false);
+    assert.equal(gate.state, GateState.LEGACY_UNBOUND);
   });
 });

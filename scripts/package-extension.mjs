@@ -8,6 +8,8 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const extensionRoot = path.join(root, "extension");
 const outputRoot = path.join(extensionRoot, "artifacts");
 const packageJson = JSON.parse(readFileSync(path.join(extensionRoot, "package.json"), "utf8"));
+const runtimeManifest = JSON.parse(readFileSync(path.join(extensionRoot, "runtime", "runtime-manifest.json"), "utf8"));
+if (runtimeManifest.cliPackage !== packageJson.minitok?.cliPackage || runtimeManifest.cliVersion !== packageJson.minitok?.cliVersion) throw new Error("extension runtime manifest is out of parity with the extension manifest");
 const output = path.join(outputRoot, `minitok-extension-${packageJson.version}.vsix`);
 
 mkdirSync(outputRoot, { recursive: true });

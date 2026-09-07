@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.5 - 2026-09-07
+
+### Security
+
+- Added the staged production signing key to the trusted entitlement key registry while retaining the previous production key for rotation compatibility.
+
 ## 1.3.4 - 2026-09-07
 
 ### Release integrity
@@ -33,7 +39,7 @@
 - Fixed: isolated workspaces layer ALL uncommitted work (staged + unstaged, binary files included via `diff HEAD --binary`); a failed layering is now a hard error instead of silently running against stale code.
 - Reliability: runs that end in REJECT/verification-failure now preserve the generated diff at `.minitok/last-run.patch` instead of discarding paid output with the temp clone.
 - Fixed: interrupted-contract cleanup now heals the REAL repository's contract (previously only touched the disposable clone's copy).
-- Security: removed the `minitok_dev_mode` entitlement gate bypass. Paid execution now always requires a valid entitlement; test suites use the programmatic `skipEntitlementCheck` option.
+- Security: removed the `minitok_dev_mode` entitlement gate bypass. Paid execution now always requires a valid entitlement; internal tests use an excluded test-only authorization capability.
 
 ### Security & privacy
 

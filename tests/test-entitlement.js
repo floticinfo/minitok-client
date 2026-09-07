@@ -154,7 +154,7 @@ describe("Signature Verification", () => {
   });
   it("tampered payload fails", () => {
     const a = signPayload(makePayload(), kp.privateKey, "k1");
-    a.payload.plan_id = "select";
+    a.payload.plan_id = "private";
     assert.equal(verifyEntitlement(a).state, EntitlementState.INVALID_SIGNATURE);
   });
   it("unknown key_id fails", () => {

@@ -9,6 +9,7 @@ const { createRuntimeServices } = require("./index");
 const { createRoutes } = require("./routes");
 const { RuntimeStdio, isValidJsonRpcRequest } = require("./stdio");
 const { setOwnerOnlyPermissions } = require("../utils/file-permissions");
+const { runtimeTokenPath, readRuntimeToken } = require("../mcp/runtime-token");
 
 const DEFAULT_PORT = 4578;
 const IDLE_TIMEOUT_MS = 30 * 60 * 1000;
@@ -37,13 +38,16 @@ class RuntimeServer {
     this._routes = createRoutes(this._services);
     this._pidFile = options.pidFile || (runtimeDir && path.join(runtimeDir, "runtime.pid")) || PID_FILE;
     this._tokenFile = options.tokenFile || (runtimeDir && path.join(runtimeDir, "runtime.token")) || TOKEN_FILE;
-    this._runtimeToken = options.runtimeToken || this._loadRuntimeToken() || crypto.randomBytes(32).toString("hex");
-    this._mcpOptions = { ...options, services: this._services, workspaceRoot: options.workspaceRoot || process.cwd(), authToken: options.authRequired !== false ? this._runtimeToken : null };
+    this._mcpTokenFile = options.mcpTokenFile || runtimeTokenPath(options.entitlementDir);
+    if (options.authRequired === false || options.entitlementRequired === false) throw new Error("MCP authentication and entitlement are mandatory");
+    const mcpToken = options.mcpToken || readRuntimeToken(this._mcpTokenFile);
+    this._runtimeToken = options.runtimeToken || this._loadRuntimeToken() || mcpToken?.token || crypto.randomBytes(32).toString("hex");
+    this._mcpOptions = { ...options, services: this._services, workspaceRoot: options.workspaceRoot || process.cwd(), authToken: this._runtimeToken, authExpiresAt: mcpToken?.expires_at || 0, authTokenFile: this._mcpTokenFile };
     this._mcpSessions = new Map();
     this._mcpSocketSessions = new WeakMap();
     this._mcp = new RuntimeStdio(this._mcpOptions);
-    this._authRequired = options.authRequired !== false;
-    this._entitlementRequired = options.entitlementRequired !== false;
+    this._authRequired = true;
+    this._entitlementRequired = true;
     this._maxConcurrentRequests = options.maxConcurrentRequests || MAX_CONCURRENT_REQUESTS;
     this._requestTimeoutMs = options.requestTimeoutMs || REQUEST_TIMEOUT_MS;
     this._lockFile = options.lockFile || `${this._pidFile}.lock`;
@@ -139,6 +143,10 @@ class RuntimeServer {
     }
   }
 
+  _createMcpSession() {
+    return new RuntimeStdio(this._mcpOptions);
+  }
+
   async _handleMcpRequestBody(req, res, body, authorization = req.headers.authorization || "") {
     const messages = Array.isArray(body) ? body : [body];
     const token = /^Bearer ([^\s]+)$/.exec(authorization)?.[1];
@@ -149,7 +157,8 @@ class RuntimeServer {
     if (!session) {
       if (sessionId) return this._sendJson(res, 404, { error: "MCP session not found" });
       sessionId = crypto.randomBytes(16).toString("hex");
-      session = new RuntimeStdio(this._mcpOptions);
+       session = this._createMcpSession();
+
       this._metrics.mcp_sessions_created++;
       if (this._mcpSessions.size >= this._maxMcpSessions) {
         const oldest = this._mcpSessions.keys().next().value;

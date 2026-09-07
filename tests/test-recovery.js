@@ -116,7 +116,7 @@ describe("PHASE 9: REJECT Recovery E2E", () => {
     pm.createProvider = (n) => n === "rta" ? new RejectThenApprove() : origCreateProvider(n);
     try {
       const r = await runPipeline("Create recovery-proof.txt with minitok_RECOVERY_PASS", {
-repoRoot: repoDir, providerOverride: "rta", skipEntitlementCheck: true, autoAccept: true, knowledgePath: p.join(tmpDir(), "outcomes.json"),
+repoRoot: repoDir, providerOverride: "rta", authorization: require("../src/pipeline/test-seam").TEST_AUTHORIZATION, autoAccept: true, knowledgePath: p.join(tmpDir(), "outcomes.json"),
          overrides: { budget: { max_cycles: 3 } },
       });
       assert.ok(r.cycles.length >= 2, `Expected >= 2 cycles, got ${r.cycles.length}`);
@@ -153,7 +153,7 @@ repoRoot: repoDir, providerOverride: "rta", skipEntitlementCheck: true, autoAcce
     pm.createProvider = (n) => n === "cr" ? new CR() : origCreateProvider(n);
     try {
       const r = await runPipeline("CHANGES_REQUESTED test", {
-repoRoot: repoDir, providerOverride: "cr", skipEntitlementCheck: true, autoAccept: true, knowledgePath: p.join(tmpDir(), "outcomes.json"),
+repoRoot: repoDir, providerOverride: "cr", authorization: require("../src/pipeline/test-seam").TEST_AUTHORIZATION, autoAccept: true, knowledgePath: p.join(tmpDir(), "outcomes.json"),
          overrides: { budget: { max_cycles: 3 } },
       });
       assert.equal(r.cycles.length, 3);
@@ -169,7 +169,7 @@ repoRoot: repoDir, providerOverride: "cr", skipEntitlementCheck: true, autoAccep
     pm.createProvider = (n) => n === "ar" ? new AlwaysReject() : origCreateProvider(n);
     try {
       const r = await runPipeline("Always reject", {
-repoRoot: repoDir, providerOverride: "ar", skipEntitlementCheck: true, autoAccept: true, knowledgePath: p.join(tmpDir(), "outcomes.json"),
+repoRoot: repoDir, providerOverride: "ar", authorization: require("../src/pipeline/test-seam").TEST_AUTHORIZATION, autoAccept: true, knowledgePath: p.join(tmpDir(), "outcomes.json"),
          overrides: { budget: { max_cycles: 3 } },
       });
       assert.equal(r.cycles.length, 3);

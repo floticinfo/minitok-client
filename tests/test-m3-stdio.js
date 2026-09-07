@@ -33,7 +33,7 @@ if (!fs2.existsSync(SCRIPT)) fs2.writeFileSync(SCRIPT, "require(\"./stdio.js\").
 
 describe("M3 stdio MCP integration", () => {
   it("starts without MODULE_NOT_FOUND", async () => {
-    const p = spawn(process.execPath, [SCRIPT], { cwd: path.dirname(SCRIPT), stdio: ["pipe","pipe","pipe"], env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("MINITOK_MCP_AUTH"))), MINITOK_MCP_AUTH_REQUIRED: "0" } });
+    const p = spawn(process.execPath, [SCRIPT], { cwd: path.dirname(SCRIPT), stdio: ["pipe","pipe","pipe"], env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("MINITOK_MCP_AUTH"))) } });
     let stderr = ""; p.stderr.on("data", d => { stderr += d.toString(); });
     await new Promise(r => setTimeout(r, 500));
     assert.ok(p.exitCode === null, "Process alive. stderr: " + stderr);
@@ -42,7 +42,7 @@ describe("M3 stdio MCP integration", () => {
   });
 
   it("initialize returns valid response", async () => {
-    const p = spawn(process.execPath, [SCRIPT], { cwd: path.dirname(SCRIPT), stdio: ["pipe","pipe","pipe"], env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("MINITOK_MCP_AUTH"))), MINITOK_MCP_AUTH_REQUIRED: "0" } });
+    const p = spawn(process.execPath, [SCRIPT], { cwd: path.dirname(SCRIPT), stdio: ["pipe","pipe","pipe"], env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("MINITOK_MCP_AUTH"))) } });
     try {
       const r = await send(p, { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "test" } } });
       assert.equal(r.result.protocolVersion, "2024-11-05");
@@ -52,7 +52,7 @@ describe("M3 stdio MCP integration", () => {
   });
 
   it("resources and prompts require a paid entitlement", async () => {
-    const p = spawn(process.execPath, [SCRIPT], { cwd: path.dirname(SCRIPT), stdio: ["pipe","pipe","pipe"], env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("MINITOK_MCP_AUTH"))), MINITOK_MCP_AUTH_REQUIRED: "0" } });
+    const p = spawn(process.execPath, [SCRIPT], { cwd: path.dirname(SCRIPT), stdio: ["pipe","pipe","pipe"], env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("MINITOK_MCP_AUTH"))) } });
     try {
       const init = await send(p, { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "test" } } });
       assert.deepEqual(init.result.capabilities.resources, { subscribe: false, listChanged: false });
@@ -64,7 +64,7 @@ describe("M3 stdio MCP integration", () => {
   });
 
   it("tools/list requires a paid entitlement", async () => {
-    const p = spawn(process.execPath, [SCRIPT], { cwd: path.dirname(SCRIPT), stdio: ["pipe","pipe","pipe"], env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("MINITOK_MCP_AUTH"))), MINITOK_MCP_AUTH_REQUIRED: "0" } });
+    const p = spawn(process.execPath, [SCRIPT], { cwd: path.dirname(SCRIPT), stdio: ["pipe","pipe","pipe"], env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("MINITOK_MCP_AUTH"))) } });
     try {
       await send(p, { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "test" } } });
       p.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) + "\n");
@@ -75,7 +75,7 @@ describe("M3 stdio MCP integration", () => {
   });
 
   it("tools/call requires a paid entitlement", async () => {
-    const p = spawn(process.execPath, [SCRIPT], { cwd: path.dirname(SCRIPT), stdio: ["pipe","pipe","pipe"], env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("MINITOK_MCP_AUTH"))), MINITOK_MCP_AUTH_REQUIRED: "0" } });
+    const p = spawn(process.execPath, [SCRIPT], { cwd: path.dirname(SCRIPT), stdio: ["pipe","pipe","pipe"], env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("MINITOK_MCP_AUTH"))) } });
     try {
       await send(p, { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "test" } } });
       p.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) + "\n");
@@ -86,7 +86,7 @@ describe("M3 stdio MCP integration", () => {
   });
 
   it("tools/call rejects without a paid entitlement", async () => {
-    const p = spawn(process.execPath, [SCRIPT], { cwd: path.dirname(SCRIPT), stdio: ["pipe","pipe","pipe"], env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("MINITOK_MCP_AUTH"))), MINITOK_MCP_AUTH_REQUIRED: "0" } });
+    const p = spawn(process.execPath, [SCRIPT], { cwd: path.dirname(SCRIPT), stdio: ["pipe","pipe","pipe"], env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("MINITOK_MCP_AUTH"))) } });
     try {
       await send(p, { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "test" } } });
       p.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) + "\n");
@@ -97,7 +97,7 @@ describe("M3 stdio MCP integration", () => {
   });
 
   it("unknown method returns error", async () => {
-    const p = spawn(process.execPath, [SCRIPT], { cwd: path.dirname(SCRIPT), stdio: ["pipe","pipe","pipe"], env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("MINITOK_MCP_AUTH"))), MINITOK_MCP_AUTH_REQUIRED: "0" } });
+    const p = spawn(process.execPath, [SCRIPT], { cwd: path.dirname(SCRIPT), stdio: ["pipe","pipe","pipe"], env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("MINITOK_MCP_AUTH"))) } });
     try {
       const r = await send(p, { jsonrpc: "2.0", id: 99, method: "nonexistent", params: {} });
       assert.equal(r.error.data.type, "AUTH_REQUIRED");
@@ -105,7 +105,7 @@ describe("M3 stdio MCP integration", () => {
   });
 
   it("malformed JSON does not crash", async () => {
-    const p = spawn(process.execPath, [SCRIPT], { cwd: path.dirname(SCRIPT), stdio: ["pipe","pipe","pipe"], env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("MINITOK_MCP_AUTH"))), MINITOK_MCP_AUTH_REQUIRED: "0" } });
+    const p = spawn(process.execPath, [SCRIPT], { cwd: path.dirname(SCRIPT), stdio: ["pipe","pipe","pipe"], env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("MINITOK_MCP_AUTH"))) } });
     try {
       await send(p, { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "test" } } });
       p.stdin.write("not valid json {{{\n");

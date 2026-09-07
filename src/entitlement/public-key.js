@@ -45,10 +45,15 @@ const KEY_REGISTRY = new Map();
 // NEVER remove an entry that may still be referenced by active entitlements.
 
 
-// Production key ??key-2024-01-prod (server ED25519_KEY_ID)
+// Production key key-2024-01-prod (server ED25519_KEY_ID)
 KEY_REGISTRY.set(
   "key-2024-01-prod",
   "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAGFySMKL6eeHvyQ/XdCe7c0OmdHxHf/RHz/Hp1BB3f1c=\n-----END PUBLIC KEY-----"
+);
+
+KEY_REGISTRY.set(
+  "key-2026-09-prod",
+  "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAVgx12biUcGsnce0wTVsBr2Snze8iC9wc2Ba3syB71ec=\n-----END PUBLIC KEY-----"
 );
 
 /**

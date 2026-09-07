@@ -7,11 +7,15 @@ async function cmdCheckout(opts) {
   const token = opts?.token || loadCustomerToken();
   if (!token) {
     console.error("Error: Authentication token required.");
-    console.error("Usage: minitok checkout --token <JWT> [--plan open|select|private]");
+    console.error("Usage: minitok checkout --token <JWT> [--plan open]");
     return 1;
   }
 
   const planId = opts?.plan || "open";
+  if (planId !== "open") {
+    console.error("Error: Only the Open plan is available for purchase.");
+    return 1;
+  }
   const endpoint = "/v1/checkout/dodo";
   console.log("[run] Creating checkout session for plan: " + planId + " (" + endpoint + ")");
 

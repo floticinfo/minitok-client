@@ -38,6 +38,10 @@ async function uploadEvolutionOutcome(outcome, options = {}) {
   if (!entitlement.allowed) {
     return { sent: false, reason: `Entitlement check failed: ${entitlement.state}` };
   }
+  const features = entitlement.entitlement?.features || entitlement.payload?.features || [];
+  if (!features.includes("evolution_upload")) {
+    return { sent: false, reason: "evolution_upload: signed feature capability is missing" };
+  }
 
   // Step 2: Check "evolution_upload" feature
   // Step 3: User opt-in (fail-closed: default OFF)

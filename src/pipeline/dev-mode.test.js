@@ -24,6 +24,11 @@ function tmpGitRepo() {
 }
 
 describe("development mode gate bypass", () => {
+  it("legacy skipEntitlementCheck fails closed", async () => {
+    const { runPipeline } = require("./loop");
+    await assert.rejects(() => runPipeline("t", { skipEntitlementCheck: true }), /skipEntitlementCheck is not supported/);
+  });
+
   it("minitok_dev_mode does not bypass the entitlement gate", async () => {
     const previous = process.env.minitok_dev_mode;
     process.env.minitok_dev_mode = "1";

@@ -9,7 +9,7 @@ const { pathToFileURL } = require("node:url");
 const fileUrl = pathToFileURL(__filename);
 const { checkEntitlement, GateState } = require("../src/entitlement/gate.js");
 const { getToolDefinitions, getToolHandler } = require("../src/mcp/tools.js");
-const { RuntimeServer } = require("../src/runtime/server.js");
+const { RuntimeServer } = require("../src/runtime/test-seam.js");
 const { ObservationService } = require("../src/runtime/observations.js");
 const { cmdActivate } = require("../src/cli/commands/activate.js");
 const { cmdStatus } = require("../src/cli/commands/status.js");
@@ -77,8 +77,10 @@ describe("M4.5 Runtime HTTP API", () => {
       evidenceDirectory: path.join(runtimeDir, "evidence"),
       observationDir: path.join(runtimeDir, "observations"),
       port: 0,
-      authRequired: false,
-      entitlementRequired: false,
+       runtimeToken: "m4-runtime-token",
+       authRequired: false,
+       entitlementRequired: false,
+
     });
     await s.start();
     try { await fn(s); } finally { await s.stop(); fs.rmSync(runtimeDir, { recursive: true, force: true }); }
@@ -101,6 +103,10 @@ describe("M4.7 CLI Graceful Failure", () => {
   it("portal no token", async () => assert.equal(await cmdPortal({}), 1));
 });
 describe("M4.9 Dodo Production Checkout/Portal Paths", () => {
+  it("checkout accepts only Open", async () => {
+    assert.equal(await cmdCheckout({ plan: "select", token: "jwt" }), 1);
+    assert.equal(await cmdCheckout({ plan: "private", token: "jwt" }), 1);
+  });
   it("checkout defaults to /v1/checkout/dodo", () => {
     const c = fs.readFileSync(path.join(__dirname, "../src/cli/commands/checkout.js"), "utf-8");
     assert.ok(c.includes('const endpoint = "/v1/checkout/dodo"'), "checkout must default to Dodo endpoint");

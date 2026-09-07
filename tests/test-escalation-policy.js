@@ -256,7 +256,7 @@ describe("E2E: token hard stop escalates to human", () => {
 repoRoot: dir,
        providerOverride: "rej",
        knowledgePath: path.join(os.tmpdir(), "minitok-escalation-" + Date.now() + "-outcomes.json"),
-      skipEntitlementCheck: true,
+      authorization: require("../src/pipeline/test-seam").TEST_AUTHORIZATION,
       autoAccept: true,
       overrides: { budget: { token_hard_limit: 100, max_cycles: 5 } },
     });

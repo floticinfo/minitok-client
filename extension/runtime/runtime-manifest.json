@@ -1,0 +1,290 @@
+{
+  "source": "canonical-root-src",
+  "cliPackage": "@flotic/minitok",
+  "cliVersion": "1.3.5",
+  "entry": "src/runtime/stdio-entry.js",
+  "files": [
+    "auth/index.js",
+    "auth/oauth.js",
+    "auth/service-account.js",
+    "cli/commands/server-config.js",
+    "config/loader.js",
+    "context/compaction.js",
+    "core/audit.js",
+    "core/errors.js",
+    "core/http.js",
+    "entitlement/gate.js",
+    "entitlement/model.js",
+    "entitlement/online.js",
+    "entitlement/policy.js",
+    "entitlement/public-key.js",
+    "entitlement/store.js",
+    "entitlement/verify.js",
+    "evidence/collector.js",
+    "evolution/analyzer.js",
+    "evolution/knowledge.js",
+    "evolution/optin.js",
+    "evolution/policy.js",
+    "evolution/sanitize.js",
+    "evolution/telemetry-policy.js",
+    "evolution/upload.js",
+    "git/operations.js",
+    "llm/models.js",
+    "llm/provider.js",
+    "mcp/tools.js",
+    "pipeline/check.js",
+    "pipeline/implementer.js",
+    "pipeline/intel.js",
+    "pipeline/json_utils.js",
+    "pipeline/loop.js",
+    "pipeline/next_task.js",
+    "pipeline/planner.js",
+    "pipeline/repair.js",
+    "pipeline/verifier.js",
+    "run-evidence.js",
+    "runtime/analysis.js",
+    "runtime/audit.js",
+    "runtime/compact.js",
+    "runtime/entitlement.js",
+    "runtime/evidence.js",
+    "runtime/index.js",
+    "runtime/knowledge.js",
+    "runtime/observations.js",
+    "runtime/routes.js",
+    "runtime/server.js",
+    "runtime/stdio-entry.js",
+    "runtime/stdio.js",
+    "runtime/workspace.js",
+    "state/contracts.js",
+    "state/run-lock.js",
+    "utils/file-permissions.js",
+    "workspace/isolation.js",
+    "workspace/manager.js"
+  ],
+  "hashes": {
+    "auth/index.js": {
+      "source": "1b2bbe5d5d79b7cb579d953c22c376296167608ab6c3d6d841a98f5d16d9a7fb",
+      "embedded": "1b2bbe5d5d79b7cb579d953c22c376296167608ab6c3d6d841a98f5d16d9a7fb"
+    },
+    "auth/oauth.js": {
+      "source": "8aa3f67caa5d1fa47b80a5eee54dc12197719e472ecd9f16b23e85f3a53ee52a",
+      "embedded": "8aa3f67caa5d1fa47b80a5eee54dc12197719e472ecd9f16b23e85f3a53ee52a"
+    },
+    "auth/service-account.js": {
+      "source": "a7325f28c1e5ec6f9d9e7261c4213582171d63f4fcd7cb528c92fc7afde8ef53",
+      "embedded": "a7325f28c1e5ec6f9d9e7261c4213582171d63f4fcd7cb528c92fc7afde8ef53"
+    },
+    "cli/commands/server-config.js": {
+      "source": "043c5f1bd9d5444e221068f946fe90b3914df730a37d8a0213ca52ced89eb5da",
+      "embedded": "043c5f1bd9d5444e221068f946fe90b3914df730a37d8a0213ca52ced89eb5da"
+    },
+    "config/loader.js": {
+      "source": "e4ae80fca3aecd67534f212e4d7f67daeff543aaee4ed40c00429fcaeb4647f0",
+      "embedded": "e4ae80fca3aecd67534f212e4d7f67daeff543aaee4ed40c00429fcaeb4647f0"
+    },
+    "context/compaction.js": {
+      "source": "0475f4c5ed57462603366a047689064c136cf596822394fff72f0c456bb27cdf",
+      "embedded": "0475f4c5ed57462603366a047689064c136cf596822394fff72f0c456bb27cdf"
+    },
+    "core/audit.js": {
+      "source": "4ffd4b8e05d64d55a0cd6a1044ef44b00ed30bb7f85c4afcb02795e4682b493f",
+      "embedded": "4ffd4b8e05d64d55a0cd6a1044ef44b00ed30bb7f85c4afcb02795e4682b493f"
+    },
+    "core/errors.js": {
+      "source": "68acc74cbb0457a2358058285f7a20c04596e047f436fb09a591f5e6013c8ec5",
+      "embedded": "68acc74cbb0457a2358058285f7a20c04596e047f436fb09a591f5e6013c8ec5"
+    },
+    "core/http.js": {
+      "source": "098c0206ffb0769f7a5e39eb4367c6861aad1ec23393ed245d27f311f4f3fb22",
+      "embedded": "098c0206ffb0769f7a5e39eb4367c6861aad1ec23393ed245d27f311f4f3fb22"
+    },
+    "entitlement/gate.js": {
+      "source": "92b5c2d48aa5a9f9ee1d0f828f577cb9e413f5bd40c802bea9be11e60c2f032a",
+      "embedded": "92b5c2d48aa5a9f9ee1d0f828f577cb9e413f5bd40c802bea9be11e60c2f032a"
+    },
+    "entitlement/model.js": {
+      "source": "c0407040270c18f87f79fb07cf4dd537f2702729da9ff13238b26c1129c60f3d",
+      "embedded": "c0407040270c18f87f79fb07cf4dd537f2702729da9ff13238b26c1129c60f3d"
+    },
+    "entitlement/online.js": {
+      "source": "545abd57b1b4885d4d77a14d46d24ff48b1d4f860504b0546bab1b656c2ff3f9",
+      "embedded": "545abd57b1b4885d4d77a14d46d24ff48b1d4f860504b0546bab1b656c2ff3f9"
+    },
+    "entitlement/policy.js": {
+      "source": "f9c4b4b23846f099ffa8ba5bbe043d00bf7e1b9bf3997130ddff7a5eac7e6917",
+      "embedded": "f9c4b4b23846f099ffa8ba5bbe043d00bf7e1b9bf3997130ddff7a5eac7e6917"
+    },
+    "entitlement/public-key.js": {
+      "source": "1f5052a5de285358f7583c3e5b85b14e37d35a55eedfc7cd234bbbdaeaaccaef",
+      "embedded": "1f5052a5de285358f7583c3e5b85b14e37d35a55eedfc7cd234bbbdaeaaccaef"
+    },
+    "entitlement/store.js": {
+      "source": "4bebf816e4d72c6f096a46891f264e4f73e96d8b0560c4c713ea7b65b34ed6c1",
+      "embedded": "4bebf816e4d72c6f096a46891f264e4f73e96d8b0560c4c713ea7b65b34ed6c1"
+    },
+    "entitlement/verify.js": {
+      "source": "eb12f269cb9e11584a589104b6835274910a2c069c3db36cb234aa2554a9913f",
+      "embedded": "eb12f269cb9e11584a589104b6835274910a2c069c3db36cb234aa2554a9913f"
+    },
+    "evidence/collector.js": {
+      "source": "ed281bc88e66c789d62769c4102c5a3324d970b7b58debf1a578ee4c358b4f35",
+      "embedded": "ed281bc88e66c789d62769c4102c5a3324d970b7b58debf1a578ee4c358b4f35"
+    },
+    "evolution/analyzer.js": {
+      "source": "269a707b54ebf4cae43d998ba46f639371078874d1057ff1cb405b7609e27e5e",
+      "embedded": "269a707b54ebf4cae43d998ba46f639371078874d1057ff1cb405b7609e27e5e"
+    },
+    "evolution/knowledge.js": {
+      "source": "95d81ec14d7ec0e8af38588e80c5972d67cb6c556bc7f0e8226869a570a6624d",
+      "embedded": "95d81ec14d7ec0e8af38588e80c5972d67cb6c556bc7f0e8226869a570a6624d"
+    },
+    "evolution/optin.js": {
+      "source": "9aa278bd76ecb1fc08a58955a8934486b609d021eb9da2577d992d90df176c23",
+      "embedded": "9aa278bd76ecb1fc08a58955a8934486b609d021eb9da2577d992d90df176c23"
+    },
+    "evolution/policy.js": {
+      "source": "027b30ad7d4f2e9f904105d5e0719ca54f6994396da60ae42b534db121ab2154",
+      "embedded": "027b30ad7d4f2e9f904105d5e0719ca54f6994396da60ae42b534db121ab2154"
+    },
+    "evolution/sanitize.js": {
+      "source": "6a6c1309c79cbed188e50ab17176e9d5c2b6caad5d6312158a2d6c4174c7ef58",
+      "embedded": "6a6c1309c79cbed188e50ab17176e9d5c2b6caad5d6312158a2d6c4174c7ef58"
+    },
+    "evolution/telemetry-policy.js": {
+      "source": "0591f501ebdeb43e7cc130c9fed69afd7055caf20799e9e23c36e558c03635a4",
+      "embedded": "0591f501ebdeb43e7cc130c9fed69afd7055caf20799e9e23c36e558c03635a4"
+    },
+    "evolution/upload.js": {
+      "source": "442fff2dd8002303fcfb52fc06108eae7f40db690882d40da5f81dcb5bab61fa",
+      "embedded": "442fff2dd8002303fcfb52fc06108eae7f40db690882d40da5f81dcb5bab61fa"
+    },
+    "git/operations.js": {
+      "source": "26d689131d68eaf4b0d247af5cbd0d3a6d6ca7dcfc1216392769bca7ba0ec72c",
+      "embedded": "26d689131d68eaf4b0d247af5cbd0d3a6d6ca7dcfc1216392769bca7ba0ec72c"
+    },
+    "llm/models.js": {
+      "source": "34f63b0632f2740a83c239536a69e1e72ee5230c1ce7b76598fe8408f638ce27",
+      "embedded": "34f63b0632f2740a83c239536a69e1e72ee5230c1ce7b76598fe8408f638ce27"
+    },
+    "llm/provider.js": {
+      "source": "b65f1529ceb55b624e89bdaf514eeabc23a9e007cb1b9f4a82e191118b3ae2cf",
+      "embedded": "b65f1529ceb55b624e89bdaf514eeabc23a9e007cb1b9f4a82e191118b3ae2cf"
+    },
+    "mcp/tools.js": {
+      "source": "054d5a37f9f1744253ed78a19dc70dc4998ba4b523147e1626df433778ac4d55",
+      "embedded": "054d5a37f9f1744253ed78a19dc70dc4998ba4b523147e1626df433778ac4d55"
+    },
+    "pipeline/check.js": {
+      "source": "ce6f7d112eebc961bcc14007f8e655d8eb797770c4827bf61b3f3b2cfec7ce27",
+      "embedded": "ce6f7d112eebc961bcc14007f8e655d8eb797770c4827bf61b3f3b2cfec7ce27"
+    },
+    "pipeline/implementer.js": {
+      "source": "556b73001fe9156748a3c96ae9d9ae079a5c07f56b956866bc00d2004ea8f8b4",
+      "embedded": "556b73001fe9156748a3c96ae9d9ae079a5c07f56b956866bc00d2004ea8f8b4"
+    },
+    "pipeline/intel.js": {
+      "source": "156f608704bbfde60702b53b83647612b49f28f98d7b2fc010986c27d517a442",
+      "embedded": "156f608704bbfde60702b53b83647612b49f28f98d7b2fc010986c27d517a442"
+    },
+    "pipeline/json_utils.js": {
+      "source": "d139507183711739b0829b47ff81b475b8f78f0d985ddc26e1d1ab187133976f",
+      "embedded": "d139507183711739b0829b47ff81b475b8f78f0d985ddc26e1d1ab187133976f"
+    },
+    "pipeline/loop.js": {
+      "source": "bd195a898d89b685db81254fa2e6cf70467c14e941258976c16e3c1506fb7ab2",
+      "embedded": "bd195a898d89b685db81254fa2e6cf70467c14e941258976c16e3c1506fb7ab2"
+    },
+    "pipeline/next_task.js": {
+      "source": "d319a3b34dc5d80f4ce9e74e3e0805d2d4ee79aa4cfda8bc9be3dcaf8d9ce583",
+      "embedded": "d319a3b34dc5d80f4ce9e74e3e0805d2d4ee79aa4cfda8bc9be3dcaf8d9ce583"
+    },
+    "pipeline/planner.js": {
+      "source": "7bab47a4926700e3485a171efeb3b968f1d8936e6180e1a5bd0367dc66ab8c6c",
+      "embedded": "7bab47a4926700e3485a171efeb3b968f1d8936e6180e1a5bd0367dc66ab8c6c"
+    },
+    "pipeline/repair.js": {
+      "source": "56ece90d7f45f22fac03c49a6b6edad45610ef3e894a393421e7c5f83c5b18bf",
+      "embedded": "56ece90d7f45f22fac03c49a6b6edad45610ef3e894a393421e7c5f83c5b18bf"
+    },
+    "pipeline/verifier.js": {
+      "source": "0978939ae5d323e2df18a52b70ecf04cbf89562cd604ac9783c36c1285066296",
+      "embedded": "0978939ae5d323e2df18a52b70ecf04cbf89562cd604ac9783c36c1285066296"
+    },
+    "run-evidence.js": {
+      "source": "41664b0e22cf702067d4414299010b2d55fe3a9060488e03b959789c8eea435c",
+      "embedded": "41664b0e22cf702067d4414299010b2d55fe3a9060488e03b959789c8eea435c"
+    },
+    "runtime/analysis.js": {
+      "source": "82fc1050072be0220307b58a92f640887cec6a3847b67be28df7412e1a29b372",
+      "embedded": "82fc1050072be0220307b58a92f640887cec6a3847b67be28df7412e1a29b372"
+    },
+    "runtime/audit.js": {
+      "source": "2ca2eff4cef6bb8542925c7115c39f971b091efadaeeddd88675295cb85ab371",
+      "embedded": "2ca2eff4cef6bb8542925c7115c39f971b091efadaeeddd88675295cb85ab371"
+    },
+    "runtime/compact.js": {
+      "source": "8ee674ccd1f92815fb09b1bdedf5f0e5618fbc58a69772272cc85bee8bd37257",
+      "embedded": "8ee674ccd1f92815fb09b1bdedf5f0e5618fbc58a69772272cc85bee8bd37257"
+    },
+    "runtime/entitlement.js": {
+      "source": "2f43fd9c6b3949b93e29cbd790559962af46dcc23c8b9ec76e40cf27f8aba083",
+      "embedded": "2f43fd9c6b3949b93e29cbd790559962af46dcc23c8b9ec76e40cf27f8aba083"
+    },
+    "runtime/evidence.js": {
+      "source": "f79c69533e18358dcbf824cfc893f87ae46a13037c873cddf24fd62c6adecb67",
+      "embedded": "f79c69533e18358dcbf824cfc893f87ae46a13037c873cddf24fd62c6adecb67"
+    },
+    "runtime/index.js": {
+      "source": "e4537a3d5500ca5d4edde9a66fa19943ed90c4b34b11cd355fb74fb8aa7812ac",
+      "embedded": "e4537a3d5500ca5d4edde9a66fa19943ed90c4b34b11cd355fb74fb8aa7812ac"
+    },
+    "runtime/knowledge.js": {
+      "source": "40e62c141798e0f931668a349804ecc4d853528c7523d092631f7d950cf2907a",
+      "embedded": "40e62c141798e0f931668a349804ecc4d853528c7523d092631f7d950cf2907a"
+    },
+    "runtime/observations.js": {
+      "source": "856551f1845549ca43c19ab689ee3cdcdc58237bf7941c0dbf369d67d15707fe",
+      "embedded": "856551f1845549ca43c19ab689ee3cdcdc58237bf7941c0dbf369d67d15707fe"
+    },
+    "runtime/routes.js": {
+      "source": "4af7b96185ee48e397a768d4cbff53a6dfc925f3019d655646959c8a56e676c3",
+      "embedded": "4af7b96185ee48e397a768d4cbff53a6dfc925f3019d655646959c8a56e676c3"
+    },
+    "runtime/server.js": {
+      "source": "36c9f3c6aad29aa52716359e4144fa40fd147d3e9257439082ac7b47667a6afa",
+      "embedded": "36c9f3c6aad29aa52716359e4144fa40fd147d3e9257439082ac7b47667a6afa"
+    },
+    "runtime/stdio-entry.js": {
+      "source": "4023e87bc6dd66a33cd8bbaaab20cc07af46584ced03e6093aaa762e097fef02",
+      "embedded": "4023e87bc6dd66a33cd8bbaaab20cc07af46584ced03e6093aaa762e097fef02"
+    },
+    "runtime/stdio.js": {
+      "source": "0444c0708ba4eba61bafeaf7475132c519a50f6597ad293f9feaa4e73e1fa804",
+      "embedded": "0444c0708ba4eba61bafeaf7475132c519a50f6597ad293f9feaa4e73e1fa804"
+    },
+    "runtime/workspace.js": {
+      "source": "1ccbe48769fd72363230d4a914849ce6b5fc52f5db6496e0b35ce8ac655ff220",
+      "embedded": "1ccbe48769fd72363230d4a914849ce6b5fc52f5db6496e0b35ce8ac655ff220"
+    },
+    "state/contracts.js": {
+      "source": "41f6db3f10b3a5e10b9d30586e4e9413ba71fcf22c94256aa6db3fe72b64b91e",
+      "embedded": "41f6db3f10b3a5e10b9d30586e4e9413ba71fcf22c94256aa6db3fe72b64b91e"
+    },
+    "state/run-lock.js": {
+      "source": "78dbcd2279a5deaa1655022b4bb323b3aeecf710639d1a6848e677550ff2caf9",
+      "embedded": "78dbcd2279a5deaa1655022b4bb323b3aeecf710639d1a6848e677550ff2caf9"
+    },
+    "utils/file-permissions.js": {
+      "source": "fcd0d4408472476c9deed589ac8da80396a5fc538866cffe7530ec52b1794443",
+      "embedded": "fcd0d4408472476c9deed589ac8da80396a5fc538866cffe7530ec52b1794443"
+    },
+    "workspace/isolation.js": {
+      "source": "ea83da2925acae380bfdf299d31726c8985ede5897cc6cc68626bedd47dedf75",
+      "embedded": "ea83da2925acae380bfdf299d31726c8985ede5897cc6cc68626bedd47dedf75"
+    },
+    "workspace/manager.js": {
+      "source": "158bf7d9e83cd892a97eb703c03be65b8b48f30f3544a583400bb180a6519ae3",
+      "embedded": "158bf7d9e83cd892a97eb703c03be65b8b48f30f3544a583400bb180a6519ae3"
+    }
+  }
+}

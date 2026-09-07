@@ -9,6 +9,7 @@ const { createRuntimeServices } = require("./index");
 const { createRoutes } = require("./routes");
 const { RuntimeStdio, isValidJsonRpcRequest } = require("./stdio");
 const { setOwnerOnlyPermissions } = require("../utils/file-permissions");
+const { runtimeTokenPath, readRuntimeToken } = require("../mcp/runtime-token");
 
 const DEFAULT_PORT = 4578;
 const IDLE_TIMEOUT_MS = 30 * 60 * 1000;
@@ -20,6 +21,8 @@ const MAX_BODY_BYTES = 1024 * 1024;
 const REQUEST_TIMEOUT_MS = 30 * 1000;
 const HEADER_TIMEOUT_MS = 10 * 1000;
 const MAX_CONCURRENT_REQUESTS = 32;
+const MAX_MCP_SESSIONS = 64;
+const MCP_SESSION_PATTERN = /^[a-f0-9]{32}$/;
 const NONCE_PATTERN = /^[a-f0-9]{32}$/;
 
 class RuntimeServer {
@@ -35,15 +38,23 @@ class RuntimeServer {
     this._routes = createRoutes(this._services);
     this._pidFile = options.pidFile || (runtimeDir && path.join(runtimeDir, "runtime.pid")) || PID_FILE;
     this._tokenFile = options.tokenFile || (runtimeDir && path.join(runtimeDir, "runtime.token")) || TOKEN_FILE;
-    this._runtimeToken = options.runtimeToken || this._loadRuntimeToken() || crypto.randomBytes(32).toString("hex");
-    this._mcp = new RuntimeStdio({ ...options, services: this._services, workspaceRoot: options.workspaceRoot || process.cwd(), authToken: options.authRequired !== false ? this._runtimeToken : null });
-    this._authRequired = options.authRequired !== false;
-    this._entitlementRequired = options.entitlementRequired !== false;
+    this._mcpTokenFile = options.mcpTokenFile || runtimeTokenPath(options.entitlementDir);
+    if (options.authRequired === false || options.entitlementRequired === false) throw new Error("MCP authentication and entitlement are mandatory");
+    const mcpToken = options.mcpToken || readRuntimeToken(this._mcpTokenFile);
+    this._runtimeToken = options.runtimeToken || this._loadRuntimeToken() || mcpToken?.token || crypto.randomBytes(32).toString("hex");
+    this._mcpOptions = { ...options, services: this._services, workspaceRoot: options.workspaceRoot || process.cwd(), authToken: this._runtimeToken, authExpiresAt: mcpToken?.expires_at || 0, authTokenFile: this._mcpTokenFile };
+    this._mcpSessions = new Map();
+    this._mcpSocketSessions = new WeakMap();
+    this._mcp = new RuntimeStdio(this._mcpOptions);
+    this._authRequired = true;
+    this._entitlementRequired = true;
     this._maxConcurrentRequests = options.maxConcurrentRequests || MAX_CONCURRENT_REQUESTS;
     this._requestTimeoutMs = options.requestTimeoutMs || REQUEST_TIMEOUT_MS;
     this._lockFile = options.lockFile || `${this._pidFile}.lock`;
     this._lockNonce = crypto.randomBytes(16).toString("hex");
     this._lockOwned = false;
+    this._maxMcpSessions = Math.max(1, Number(options.maxMcpSessions || MAX_MCP_SESSIONS));
+    this._metrics = { requests_total: 0, requests_failed: 0, mcp_requests_total: 0, mcp_sessions_created: 0, mcp_sessions_evicted: 0, last_error: null, started_at: null };
   }
 
   async start() {
@@ -63,9 +74,10 @@ class RuntimeServer {
            reject(new Error(`Unable to secure runtime credentials: ${error.message}`));
           return;
         }
-this._started = true;
-         this._ready = true;
-         resolve();
+        this._started = true;
+        this._ready = true;
+        this._metrics.started_at = new Date().toISOString();
+        resolve();
       });
     });
   }
@@ -73,13 +85,18 @@ this._started = true;
   async stop() {
     if (this._idleTimer) clearTimeout(this._idleTimer);
     this._ready = false;
+    this._mcpSessions.clear();
     this._removePid();
     if (this._server && this._started) return new Promise(resolve => { this._server.close(() => { this._started = false; this._releaseLock(); resolve(); }); });
     this._releaseLock();
   }
 
   async _handleRequest(req, res) {
-    if (this._activeRequests >= this._maxConcurrentRequests) return this._sendJson(res, 503, { error: "Too many concurrent requests" });
+    this._metrics.requests_total++;
+    if (this._activeRequests >= this._maxConcurrentRequests) {
+      this._metrics.requests_failed++;
+      return this._sendJson(res, 503, { error: "Too many concurrent requests" });
+    }
     this._activeRequests++;
     this._resetIdleTimer();
     try {
@@ -88,9 +105,9 @@ this._started = true;
       const url = new URL(req.url, `http://${HOST}:${this._port}`);
       const routeKey = `${req.method} ${url.pathname}`;
       const route = this._routes[routeKey];
-      if (!route && routeKey !== "POST /mcp") return this._sendJson(res, 404, { error: "Not found" });
+      if (!route && routeKey !== "POST /mcp" && routeKey !== "GET /metrics") return this._sendJson(res, 404, { error: "Not found" });
       if (this._authRequired && !(["GET /health", "GET /readyz"].includes(routeKey)) && !this._isAuthorized(req)) return this._sendJson(res, 401, { error: "Unauthorized" });
-      if (this._entitlementRequired && !(["GET /health", "GET /readyz", "GET /api/v1/status"].includes(routeKey))) {
+      if (this._entitlementRequired && routeKey !== "POST /mcp" && !(["GET /health", "GET /readyz", "GET /metrics", "GET /api/v1/status"].includes(routeKey))) {
         const policy = await this._services.entitlement.status();
         if (!policy?.allowed) return this._sendJson(res, 403, { error: policy?.message || "Entitlement required", state: policy?.state });
       }
@@ -106,12 +123,18 @@ this._started = true;
         }
         body = await this._readBody(req);
       }
-      if (routeKey === "POST /mcp") return this._handleMcpRequestBody(req, res, body || {});
+      if (routeKey === "POST /mcp") {
+        this._metrics.mcp_requests_total++;
+        return this._handleMcpRequestBody(req, res, body || {});
+      }
+      if (routeKey === "GET /metrics") return this._sendJson(res, 200, { ...this.metrics, entitlement_required: this._entitlementRequired, auth_required: this._authRequired });
       const params = {};
       url.searchParams.forEach((v, k) => { params[k] = v; });
       const result = await route({ body: body || {}, params });
       this._sendJson(res, result.status || 200, result.data || result);
     } catch (err) {
+      this._metrics.requests_failed++;
+      this._metrics.last_error = { code: err.code || null, status: err.statusCode || 500, at: new Date().toISOString() };
       if (req.method === "POST" && new URL(req.url, `http://${HOST}:${this._port}`).pathname === "/mcp" && err.statusCode === 400) return this._sendJson(res, 200, { jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } });
       this._sendJson(res, err.statusCode || 500, { error: err.statusCode === 413 ? "Request body too large" : err.statusCode === 400 ? "Malformed JSON" : "Internal error" });
     } finally {
@@ -120,23 +143,43 @@ this._started = true;
     }
   }
 
+  _createMcpSession() {
+    return new RuntimeStdio(this._mcpOptions);
+  }
+
   async _handleMcpRequestBody(req, res, body, authorization = req.headers.authorization || "") {
     const messages = Array.isArray(body) ? body : [body];
     const token = /^Bearer ([^\s]+)$/.exec(authorization)?.[1];
-    const responses = [];
-    const original = this._mcp._respond.bind(this._mcp);
-    this._mcp._respond = message => responses.push(message);
-    try {
-      for (const message of messages) {
-        if (!isValidJsonRpcRequest(message)) {
-          responses.push({ jsonrpc: "2.0", id: null, error: { code: -32600, message: "Invalid Request" } });
-          continue;
-        }
-        const params = message.params === undefined ? {} : { ...message.params };
-        if (token) params.authToken = token;
-        await this._mcp._handleLine(JSON.stringify({ ...message, params }));
+    const requestedId = req.headers["mcp-session-id"];
+    if (requestedId !== undefined && (typeof requestedId !== "string" || !MCP_SESSION_PATTERN.test(requestedId))) return this._sendJson(res, 400, { error: "Invalid MCP session identifier" });
+    let sessionId = requestedId || this._mcpSocketSessions.get(req.socket);
+    let session = sessionId ? this._mcpSessions.get(sessionId) : null;
+    if (!session) {
+      if (sessionId) return this._sendJson(res, 404, { error: "MCP session not found" });
+      sessionId = crypto.randomBytes(16).toString("hex");
+       session = this._createMcpSession();
+
+      this._metrics.mcp_sessions_created++;
+      if (this._mcpSessions.size >= this._maxMcpSessions) {
+        const oldest = this._mcpSessions.keys().next().value;
+        this._mcpSessions.delete(oldest);
+        this._metrics.mcp_sessions_evicted++;
       }
-    } finally { this._mcp._respond = original; }
+      this._mcpSessions.set(sessionId, session);
+      this._mcpSocketSessions.set(req.socket, sessionId);
+    }
+    const responses = [];
+    const respond = message => responses.push(message);
+    for (const message of messages) {
+      if (!isValidJsonRpcRequest(message)) {
+        responses.push({ jsonrpc: "2.0", id: null, error: { code: -32600, message: "Invalid Request" } });
+        continue;
+      }
+      const params = message.params === undefined ? {} : { ...message.params };
+      if (token) params.authToken = token;
+      await session._handleLine(JSON.stringify({ ...message, params }), respond);
+    }
+    res.setHeader("Mcp-Session-Id", sessionId);
     if (Array.isArray(body)) {
       if (body.length === 0) return this._sendJson(res, 200, { jsonrpc: "2.0", id: null, error: { code: -32600, message: "Invalid Request" } });
       return this._sendJson(res, 200, responses);
@@ -273,6 +316,7 @@ this._started = true;
 
   get port() { return this._port; }
   get services() { return this._services; }
+  get metrics() { return { ...this._metrics, active_requests: this._activeRequests, active_mcp_sessions: this._mcpSessions.size, ready: this._ready }; }
 }
 
-module.exports = { RuntimeServer, DEFAULT_PORT, IDLE_TIMEOUT_MS, HOST, MAX_BODY_BYTES, REQUEST_TIMEOUT_MS, HEADER_TIMEOUT_MS, MAX_CONCURRENT_REQUESTS, NONCE_PATTERN, PID_FILE, TOKEN_FILE };
+module.exports = { RuntimeServer, DEFAULT_PORT, IDLE_TIMEOUT_MS, HOST, MAX_BODY_BYTES, REQUEST_TIMEOUT_MS, HEADER_TIMEOUT_MS, MAX_CONCURRENT_REQUESTS, MAX_MCP_SESSIONS, MCP_SESSION_PATTERN, NONCE_PATTERN, PID_FILE, TOKEN_FILE };

@@ -6,7 +6,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const http = require("http");
-const { RuntimeServer } = require("./server");
+const { RuntimeServer } = require("./test-seam");
 
 function request(port, options = {}, body) {
   return new Promise((resolve, reject) => {

@@ -100,13 +100,15 @@ function mcpCommand() {
     return (0, mcp_1.packagedMcpCommand)(path.resolve(__dirname, "../.."), process.execPath);
 }
 function mcpEnvironment() {
-    return { ...process.env, MINITOK_MCP_AUTH_TOKEN_FILE: path.join(os.homedir(), ".minitok", "entitlement", "installation-token.json") };
+    return { ...process.env, MINITOK_MCP_AUTH_TOKEN_FILE: path.join(os.homedir(), ".minitok", "mcp", "runtime-token.json") };
 }
 function mcpAuthToken() {
     const tokenFile = mcpEnvironment().MINITOK_MCP_AUTH_TOKEN_FILE;
     try {
         const value = JSON.parse(fs.readFileSync(tokenFile, "utf8"));
-        return typeof value.token === "string" ? value.token : undefined;
+        if (typeof value.token !== "string" || !value.token || value.revoked_at || typeof value.expires_at !== "number" || Date.now() >= value.expires_at)
+            return undefined;
+        return value.token;
     }
     catch {
         return undefined;
