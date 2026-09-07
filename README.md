@@ -8,7 +8,7 @@
 npm install -g @flotic/minitok
 ```
 
-The current published release is `1.3.5`. minitok is paid software with three canonical plans: Open, Select, and Private; there is no free plan. Open permits consented per-run telemetry, Select permits consented aggregate-only telemetry, and Private never uploads or stores telemetry. Configure at least one LLM provider in `minitok.yml`; role-specific providers override `default_provider`, and otherwise the first configured provider is used.
+The current source release is `1.3.6`; the published npm release remains `1.3.5` until the next publish. minitok is paid software with three canonical plans: Open, Select, and Private; there is no free plan. Open permits consented per-run telemetry, Select permits consented aggregate-only telemetry, and Private never uploads or stores telemetry. Configure at least one LLM provider in `minitok.yml`; role-specific providers override `default_provider`, and otherwise the first configured provider is used.
 
 The npm tarball includes only the runtime and end-user documentation listed by `package.json`; development and release verification scripts are not published, and source tests are not published. Release validation runs the packed-install smoke against a temporary npm prefix and executes the packaged CLI help, status, and auth status commands.
 

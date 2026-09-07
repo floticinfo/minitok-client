@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.6 - 2026-09-07
+
+### Release integrity
+
+- Reconciled the trusted production signing-key rotation and current CLI/Extension release artifacts.
+
 ## 1.3.5 - 2026-09-07
 
 ### Security
