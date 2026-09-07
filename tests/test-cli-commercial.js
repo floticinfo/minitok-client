@@ -3,6 +3,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("fs");
 const path = require("path");
+const pkg = require("../package.json");
 const ids = ["legal-owner-approval", "privacy-owner-approval", "support-commitments", "publication-authorization", "registry-publication-verification", "production-operations"];
 function approvalFor(id, status = "APPROVED") {
   const approval = { status, owner: "operator", decision: status === "APPROVED" ? "approved" : "pending", evidenceRef: { type: "external", reference: "operator-record" }, approvedAt: "2026-09-06T00:00:00Z" };
@@ -10,7 +11,7 @@ function approvalFor(id, status = "APPROVED") {
   if (id === "production-operations") approval.productionOperations = { rollbackOwner: "ops", monitoringOwner: "monitoring" };
   return approval;
 }
-function approvalManifest(status = "APPROVED") { return { schemaVersion: 1, release: { package: "@flotic/minitok", version: "1.3.3" }, approvals: Object.fromEntries(ids.map(id => [id, approvalFor(id, status)])) }; }
+function approvalManifest(status = "APPROVED") { return { schemaVersion: 1, release: { package: pkg.name, version: pkg.version }, approvals: Object.fromEntries(ids.map(id => [id, approvalFor(id, status)])) }; }
 test("verified installers exist and record integrity state", () => { for (const file of ["install-verified.sh", "install-verified.cmd"]) { const target = path.join(__dirname, "..", "scripts", file); assert.ok(fs.existsSync(target)); assert.match(fs.readFileSync(target, "utf8"), /previous|rollback/i); } });
 test("terminal probe is platform-aware", () => { assert.equal(require("../src/cli/terminal-probe").runTerminalProbe().output.trim(), "minitok-pty"); });
 test("commercial readiness keeps missing approvals blocked or unverified", async () => { const { evaluateCommercialReadiness } = await import("../scripts/commercial-readiness.mjs"); const documents = { "EULA.md": "> TODO: Legal owner must approve", "POLICY.md": "Legal review is required before publication. TODO: Operator must confirm", "README.md": "npm tarball includes runtime" }; const results = evaluateCommercialReadiness(file => documents[file] || "", { state: "MISSING", errors: ["not supplied"] }); assert.deepEqual(results.map(result => result.status), ["BLOCKED", "BLOCKED", "UNVERIFIED", "UNVERIFIED", "UNVERIFIED", "UNVERIFIED"]); });
