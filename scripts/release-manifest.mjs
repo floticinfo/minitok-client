@@ -49,7 +49,8 @@ export function validateManifest(manifest, { packageData = packageJson, gitData 
 }
 
 export function readGitData() {
-  return { commit: git("rev-parse", "HEAD"), tree: git("rev-parse", "HEAD^{tree}"), status: git("status", "--short", "--untracked-files=all"), tags: git("tag", "--points-at", "HEAD").split(/\r?\n/).filter(Boolean) };
+  const status = git("status", "--short", "--untracked-files=all").split(/\r?\n/).filter(Boolean).filter(line => !line.endsWith(" release-manifest.json"));
+  return { commit: git("rev-parse", "HEAD"), tree: git("rev-parse", "HEAD^{tree}"), status: status.join("\n"), tags: git("tag", "--points-at", "HEAD").split(/\r?\n/).filter(Boolean) };
 }
 
 export function generateManifest() {
