@@ -89,7 +89,7 @@ export function mcpReadiness() {
   results.push(local(has("src/runtime/stdio.js", /ENTITLEMENT_REQUIRED/) && has("src/runtime/server.js", /entitlement\.status/) && has("src/runtime/server.js", /Entitlement required/), "MCP entitlement boundary", "paid MCP methods fail closed with entitlement errors"));
   results.push(local(has("src/runtime/server.js", /Forbidden: localhost/) && has("src/cli/commands/server-config.js", /Remote http server URLs are not allowed/) && has("src/cli/commands/server-config.js", /https/), "MCP localhost versus remote boundary", "local runtime is loopback-only and remote URLs require HTTPS"));
   results.push(local(has("src/runtime/stdio.js", /Parse error/) && has("src/runtime/stdio.js", /Unsupported protocol version/) && has("src/runtime/server.js", /Content-Type must be application\/json/), "MCP actionable errors", "parse, protocol, and content-type failures identify corrective action"));
-  results.push(unverified("MCP remote deployment and production entitlement", "local transport contracts do not prove remote hosting, production authentication, or live entitlement behavior"));
+  results.push(unverified("MCP remote deployment and production entitlement", "local transport contracts do not prove remote hosting, production authentication, or live entitlement behavior; run npm run readiness:mcp:live for safe public health probes"));
   return results;
 }
 

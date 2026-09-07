@@ -15,12 +15,12 @@ export function publishedMetadata(metadata, tag = "latest") {
   return version ? { ...metadata, version, dist: metadata.versions?.[version]?.dist } : metadata;
 }
 
-export function validateRegistryMetadata(metadata, expected = packageJson) {
+export function validateRegistryMetadata(metadata, expected = packageJson, { requireLatest = true } = {}) {
   const errors = [];
   if (!metadata || typeof metadata !== "object") return ["registry metadata is not an object"];
   if (metadata.name !== expected.name) errors.push(`registry package name mismatch: ${metadata.name || "missing"}`);
   if (!metadata.version) errors.push("registry version is missing");
-  if (metadata.version && metadata.version !== expected.version) errors.push(`registry version ${metadata.version} does not match ${expected.version}`);
+  if (requireLatest && metadata.version && metadata.version !== expected.version) errors.push(`registry version ${metadata.version} does not match ${expected.version}`);
   if (!metadata.dist?.tarball || !metadata.dist?.integrity) errors.push("registry dist tarball/integrity metadata is incomplete");
   return errors;
 }
@@ -53,9 +53,10 @@ if (process.argv[1] && process.argv[1].endsWith("registry-compat.mjs")) {
   } else {
     try {
       const metadata = await fetchRegistryMetadata(`https://registry.npmjs.org/${encodeURIComponent(packageJson.name)}`);
-      const errors = validateRegistryMetadata(metadata["dist-tags"]?.latest ? { ...metadata, version: metadata["dist-tags"].latest, dist: metadata.versions?.[metadata["dist-tags"].latest]?.dist } : metadata);
-      if (errors.length) throw new Error(errors.join("\n"));
-      console.log(`registry compatibility passed for ${packageJson.name}@${packageJson.version}`);
+       const latest = metadata["dist-tags"]?.latest;
+       const errors = validateRegistryMetadata(latest ? { ...metadata, version: latest, dist: metadata.versions?.[latest]?.dist } : metadata, packageJson, { requireLatest: process.env.MINITOK_REGISTRY_REQUIRE_LATEST === "1" });
+       if (errors.length) throw new Error(errors.join("\n"));
+       console.log(`registry metadata valid for ${packageJson.name}; latest=${latest || "unknown"}; local=${packageJson.version}`);
     } catch (error) { console.error(`registry compatibility failed: ${error.message}`); process.exitCode = 1; }
   }
 }

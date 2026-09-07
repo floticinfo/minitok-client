@@ -10,6 +10,7 @@ last-run.json
 .env.*
 *.log
 *.tmp
+release-manifest.json
 pack-output.txt
 reports/
 reports/**

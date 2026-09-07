@@ -32,6 +32,7 @@
     "commercial:readiness": "node scripts/commercial-readiness.mjs --json",
     "readiness:all": "node scripts/readiness-checks.mjs --target all",
     "readiness:mcp": "node scripts/readiness-checks.mjs --target mcp",
+    "readiness:mcp:live": "node scripts/mcp-live-readiness.mjs",
     "readiness:checks": "node scripts/readiness-checks.mjs --target all",
     "stage2:parity": "node scripts/stage2-parity.mjs",
     "release:artifacts": "node scripts/release-artifact-check.mjs",
