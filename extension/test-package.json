@@ -1,0 +1,7 @@
+{
+  "name": "minitok-extension-test",
+  "private": true,
+  "scripts": { "compile": "tsc -p tsconfig.json", "test:host": "npm run compile && node dist/test/extension-host.js" },
+  "dependencies": { "@vscode/test-electron": "^2.5.2" },
+  "devDependencies": { "@types/node": "^22.10.0", "@types/vscode": "^1.90.0", "typescript": "^5.7.2", "@vscode/vsce": "^3.2.2" }
+}

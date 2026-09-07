@@ -17,7 +17,7 @@ async function intel(provider, task, repoContext, options = {}) {
     { role: "system", content: INTEL_SYSTEM_PROMPT },
     { role: "user", content: `## Task\n${task}\n\n## Repository Context\n${repoContext}\n\nIdentify facts the planner must use. Do not propose changes outside the task.` },
   ];
-  const result = await provider.complete(messages, { model: options.model, max_tokens: 4096, temperature: 0.1 });
+  const result = await provider.complete(messages, { ...options, max_tokens: 4096, temperature: 0.1 });
   const { parseResponseJSON } = require("./json_utils");
   const { parsed, valid } = parseResponseJSON(result.text, { error: "Invalid intelligence response", raw: result.text });
   return { intelligence: valid ? parsed : { error: parsed.error || "Invalid intelligence response", raw: parsed.raw || result.text }, tokens: result.tokens, model: result.model };

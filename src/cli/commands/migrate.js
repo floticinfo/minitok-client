@@ -144,10 +144,11 @@ async function cmdMigrate(repoPath, name) {
   console.log(`  repository:  ${ws.repository_root}`);
   console.log(`  project:     ${ws.project_type}`);
   console.log(`\nNext steps:`);
-  console.log(`  1. Edit minitok.yml to configure roles and providers`);
-  console.log(`  2. Set API keys: ANTHROPIC_API_KEY, OPENAI_API_KEY, or GOOGLE_API_KEY`);
-  console.log(`  3. Run: minitok doctor`);
-  console.log(`  4. Run: minitok run "your task description"`);
+  console.log(`  1. Configure one provider in minitok.yml or set ANTHROPIC_API_KEY, OPENAI_API_KEY, GOOGLE_API_KEY, or OPENROUTER_API_KEY`);
+  console.log(`  2. Run: minitok doctor`);
+  console.log(`  3. Preview safely: minitok run --dry-run "your task description"`);
+  console.log(`  4. Run a real task: minitok run "your task description"`);
+  console.log(`  5. Review evidence: .minitok/last-run.json`);
 
   return 0;
 }

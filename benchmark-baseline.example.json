@@ -1,0 +1,8 @@
+{
+  "runs": 10,
+  "successful_runs": 6,
+  "duration_minutes": 120,
+  "total_tokens": 1000000,
+  "total_cost_usd": 3.0,
+  "manual_interventions": 8
+}

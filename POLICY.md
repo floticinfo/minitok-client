@@ -3,7 +3,7 @@
 > **Document type:** Technical policy — data processing, consent, and entitlement architecture
 > **Version:** 1.1.0
 > **Last updated:** 2026-09-04
-> **Applies to:** `@flotic/minitok` v1.3.3 and compatible `minitok-server` v0.1.0 API
+> **Applies to:** `@flotic/minitok` v1.3.4 and compatible `minitok-server` v0.1.0 API
 
 This is a technical description of current implementation behavior. It is not a privacy notice, data-processing agreement, or legal advice. Legal review is required before publication as a legal policy.
 
@@ -64,9 +64,9 @@ minitok evolution disable
 
 ## 5. Entitlement Model
 
-### 5.1 Current plan
+### 5.1 Current paid plans
 
-The server seed and purchasable-plan mapping currently define `pro`. Other plan names in historical reports or experimental code are not customer-facing plan availability.
+The current commercial contract has three paid plans: `open`, `select`, and `private`. There is no free plan. `open` permits consented per-run telemetry, `select` permits consented aggregate-only telemetry, and `private` does not upload telemetry. Entitlement is required for all paid execution.
 
 ### 5.2 Feature flags
 

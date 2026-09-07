@@ -1,0 +1,26 @@
+{
+  "api": {
+    "defaultOrigin": "https://api.minitok.dev",
+    "routes": {
+      "activate": "/v1/activate",
+      "validate": "/v1/validate",
+      "activationKey": "/v1/activation-key",
+      "checkout": "/v1/checkout/dodo"
+    },
+    "activationRequestFields": ["key", "installation_id"],
+    "validationRequestFields": ["token", "entitlement"],
+    "checkoutRequestFields": ["planId"]
+  },
+  "signing": {
+    "keyId": "key-2024-01-prod",
+    "spkiSha256": "0a1dab40cb5b8782bf6543d0d2885c81e5ccc2b0a60b8b0bf957e984eb920dc3"
+  },
+  "mcp": {
+    "protocolVersion": "2024-11-05",
+    "stdioEntry": "src/runtime/stdio-entry.js",
+    "httpHost": "127.0.0.1",
+    "httpPath": "/mcp",
+    "httpAuthScheme": "Bearer",
+    "remoteHttpAllowed": false
+  }
+}

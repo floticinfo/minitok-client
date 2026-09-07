@@ -36,9 +36,9 @@ function runtimeFixture(prefix = "m3-runtime-") {
   };
 }
 
-function httpFetch(url) {
+function httpFetch(url, headers = {}) {
   return new Promise((resolve) => {
-    http.get(url, (res) => {
+    http.get(url, { headers }, (res) => {
       let d = "";
       res.on("data", c => d += c);
       res.on("end", () => {
@@ -49,15 +49,15 @@ function httpFetch(url) {
   });
 }
 
-function httpPost(url, body) {
+function httpPost(url, body, headers = {}) {
   return new Promise((resolve) => {
     const data = JSON.stringify(body);
-    const req = http.request(url, { method: "POST", headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(data) } }, (res) => {
+    const req = http.request(url, { method: "POST", headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(data), ...headers } }, (res) => {
       let b = "";
       res.on("data", c => b += c);
       res.on("end", () => {
-        try { resolve({ status: res.statusCode, data: JSON.parse(b) }); }
-        catch { resolve({ status: res.statusCode, data: b }); }
+        try { resolve({ status: res.statusCode, headers: res.headers, data: JSON.parse(b) }); }
+        catch { resolve({ status: res.statusCode, headers: res.headers, data: b }); }
       });
     });
     req.on("error", (e) => resolve({ status: 0, error: e.message }));
@@ -249,6 +249,56 @@ describe("M3 HTTP Server", () => {
     assert.equal(typeof r.data.knowledge.outcomes, "number");
   });
 
+  it("rejects non-loopback remote addresses before route handling", async () => {
+    const original = server._handleRequest;
+    const request = { socket: { remoteAddress: "192.0.2.1" }, method: "GET", url: "/api/v1/status" };
+    const response = { headersSent: false, writeHead(status, headers) { this.status = status; this.headers = headers; return this; }, end(body) { this.body = body; } };
+    await original.call(server, request, response);
+    assert.equal(response.status, 403);
+    assert.match(response.body, /localhost only/);
+  });
+
+  it("rejects missing, malformed, and invalid bearer credentials on MCP HTTP", async () => {
+    const authTemp = runtimeFixture("m3-server-mcp-auth-");
+    const authServer = new RuntimeServer({ ...authTemp, port: 0, entitlementRequired: false, runtimeToken: "runtime-secret" });
+    await authServer.start();
+    try {
+      const url = `http://127.0.0.1:${authServer.port}/mcp`;
+      const message = { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05" } };
+      for (const authorization of [undefined, "Basic runtime-secret", "Bearer", "Bearer wrong", "Bearer runtime-secret extra"]) {
+        const headers = authorization === undefined ? {} : { Authorization: authorization };
+        const r = await httpPost(url, message, headers);
+        assert.equal(r.status, 401, authorization || "missing authorization");
+      }
+      const valid = await httpPost(url, message, { Authorization: "Bearer runtime-secret" });
+      assert.equal(valid.status, 200);
+      assert.equal(valid.data.result.serverInfo.name, "minitok-runtime");
+    } finally {
+      await authServer.stop();
+      fs.rmSync(authTemp.dir, { recursive: true, force: true });
+    }
+  });
+
+  it("allows MCP initialize but denies paid methods without entitlement", async () => {
+    const entitlementTemp = runtimeFixture("m3-server-mcp-entitlement-");
+    const denied = new RuntimeServer({ ...entitlementTemp, port: 0, runtimeToken: "runtime-secret", entitlementRequired: true });
+    denied.services.entitlement.status = async () => ({ allowed: false, state: "SERVER_REJECTED", message: "Entitlement denied" });
+    await denied.start();
+    try {
+      const url = `http://127.0.0.1:${denied.port}/mcp`;
+      const init = await httpPost(url, { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05" } }, { Authorization: "Bearer runtime-secret" });
+      assert.equal(init.status, 200);
+      assert.equal(typeof init.headers["mcp-session-id"], "string");
+      const list = await httpPost(url, { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} }, { Authorization: "Bearer runtime-secret", "Mcp-Session-Id": init.headers["mcp-session-id"] });
+      assert.equal(list.status, 200);
+      assert.equal(list.data.error.data.type, "ENTITLEMENT_REQUIRED");
+      assert.equal(list.data.error.data.state, "SERVER_REJECTED");
+    } finally {
+      await denied.stop();
+      fs.rmSync(entitlementTemp.dir, { recursive: true, force: true });
+    }
+  });
+
   it("POST /api/v1/knowledge/query works", async () => {
     const r = await httpPost(`http://127.0.0.1:${server.port}/api/v1/knowledge/query`, {});
     assert.equal(r.status, 200);
@@ -297,9 +347,9 @@ describe("M3 HTTP Server", () => {
 });
 
 describe("M3 MCP Tools", () => {
-  it("defines 8 tools", () => {
+  it("defines 14 tools", () => {
     const tools = getToolDefinitions();
-    assert.equal(tools.length, 8);
+    assert.equal(tools.length, 14);
     const names = tools.map(t => t.name);
     assert.ok(names.includes("minitok_knowledge_query"));
     assert.ok(names.includes("minitok_knowledge_record"));

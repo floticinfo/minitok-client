@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "release": {
+    "package": "",
+    "version": ""
+  },
+  "approvals": {
+    "legal-owner-approval": {
+      "status": "",
+      "owner": "",
+      "decision": "",
+      "evidenceRef": { "type": "external", "reference": "PENDING_OPERATOR_EVIDENCE" },
+      "approvedAt": ""
+    },
+    "privacy-owner-approval": {
+      "status": "",
+      "owner": "",
+      "decision": "",
+      "evidenceRef": { "type": "external", "reference": "PENDING_OPERATOR_EVIDENCE" },
+      "approvedAt": ""
+    },
+    "support-commitments": {
+      "status": "",
+      "owner": "",
+      "decision": "",
+      "evidenceRef": { "type": "external", "reference": "PENDING_OPERATOR_EVIDENCE" },
+      "approvedAt": "",
+      "support": { "contactOwner": "", "escalationOwner": "" }
+    },
+    "publication-authorization": {
+      "status": "",
+      "owner": "",
+      "decision": "",
+      "evidenceRef": { "type": "external", "reference": "PENDING_OPERATOR_EVIDENCE" },
+      "approvedAt": ""
+    },
+    "registry-publication-verification": {
+      "status": "",
+      "owner": "",
+      "decision": "",
+      "evidenceRef": { "type": "external", "reference": "PENDING_OPERATOR_EVIDENCE" },
+      "approvedAt": ""
+    },
+    "production-operations": {
+      "status": "",
+      "owner": "",
+      "decision": "",
+      "evidenceRef": { "type": "external", "reference": "PENDING_OPERATOR_EVIDENCE" },
+      "approvedAt": "",
+      "productionOperations": { "rollbackOwner": "", "monitoringOwner": "" }
+    }
+  }
+}

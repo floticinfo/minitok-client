@@ -25,13 +25,36 @@ function cacheFilePath() {
   return path.join(os.homedir(), ".minitok", "update-check.json");
 }
 
+function parseVersion(value) {
+  const match = String(value).trim().match(/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/);
+  if (!match) return null;
+  const identifiers = match[4] ? match[4].split(".") : [];
+  return { numbers: match.slice(1, 4).map(Number), identifiers };
+}
+
+function compareVersions(left, right) {
+  const a = parseVersion(left);
+  const b = parseVersion(right);
+  if (!a || !b) return null;
+  for (let index = 0; index < 3; index++) if (a.numbers[index] !== b.numbers[index]) return a.numbers[index] > b.numbers[index] ? 1 : -1;
+  if (!a.identifiers.length && !b.identifiers.length) return 0;
+  if (!a.identifiers.length) return 1;
+  if (!b.identifiers.length) return -1;
+  for (let index = 0; index < Math.max(a.identifiers.length, b.identifiers.length); index++) {
+    if (a.identifiers[index] === undefined) return -1;
+    if (b.identifiers[index] === undefined) return 1;
+    if (a.identifiers[index] === b.identifiers[index]) continue;
+    const aNumeric = /^\d+$/.test(a.identifiers[index]);
+    const bNumeric = /^\d+$/.test(b.identifiers[index]);
+    if (aNumeric && bNumeric) return Number(a.identifiers[index]) > Number(b.identifiers[index]) ? 1 : -1;
+    if (aNumeric !== bNumeric) return aNumeric ? -1 : 1;
+    return a.identifiers[index] > b.identifiers[index] ? 1 : -1;
+  }
+  return 0;
+}
+
 function isNewerVersion(candidate, current) {
-  const parse = (v) => String(v).split(".").map((n) => parseInt(n, 10) || 0);
-  const [c1, c2, c3] = parse(candidate);
-  const [m1, m2, m3] = parse(current);
-  if (c1 !== m1) return c1 > m1;
-  if (c2 !== m2) return c2 > m2;
-  return c3 > m3;
+  return compareVersions(candidate, current) === 1;
 }
 
 function readCache(cachePath) {
@@ -156,4 +179,9 @@ function checkForUpdate() {
   } catch {}
 }
 
-module.exports = { checkForUpdate, shouldNotify, isNewerVersion, notifyIfOutdated, scheduleRefresh, cacheFilePath, REGISTRY_URL, CHECK_INTERVAL_MS, writeCacheAtomic };
+function getUpdateStatus({ cachePath = cacheFilePath(), currentVersion = minitokVersion } = {}) {
+  const cache = readCache(cachePath);
+  return { current: currentVersion, latest: cache?.latest || currentVersion, updateAvailable: Boolean(cache?.latest && isNewerVersion(cache.latest, currentVersion)) };
+}
+
+module.exports = { checkForUpdate, shouldNotify, isNewerVersion, notifyIfOutdated, scheduleRefresh, cacheFilePath, REGISTRY_URL, CHECK_INTERVAL_MS, writeCacheAtomic, getUpdateStatus };

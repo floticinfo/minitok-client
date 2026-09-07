@@ -21,12 +21,15 @@ const { randomUUID } = require("crypto");
 const { EntitlementStore, DEFAULT_ENTITLEMENT_DIR } = require("../../entitlement/store");
 const { saveGateState } = require("../../entitlement/gate");
 const { resolveServerUrl } = require("./server-config");
+const { setOwnerOnlyPermissions } = require("../../utils/file-permissions");
 
 const INSTALLATION_TOKEN_FILE = "installation-token.json";
 
 async function cmdActivate(key, opts) {
+  const envName = opts?.keyEnv;
+  if (!key && envName && /^[A-Z_][A-Z0-9_]*$/i.test(envName)) key = process.env[envName];
   if (!key || typeof key !== "string") {
-    console.error("Error: Activation key required.\n\nUsage: minitok activate <key>");
+    console.error("Error: Activation key required.\n\nUsage: minitok activate <key> or minitok activate --key-env MINITOK_ACTIVATION_KEY");
     return 1;
   }
 
@@ -85,7 +88,7 @@ async function cmdActivate(key, opts) {
     const tmp = tokenFile + ".tmp";
     fs.writeFileSync(tmp, JSON.stringify(record, null, 2), { encoding: "utf-8", mode: 0o600 });
     fs.renameSync(tmp, tokenFile);
-    try { fs.chmodSync(tokenFile, 0o600); } catch {}
+    setOwnerOnlyPermissions(tokenFile);
   } catch (err) {
     console.error(`Error: Failed to store installation token: ${err.message}`);
     return 1;

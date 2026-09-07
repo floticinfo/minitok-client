@@ -1,0 +1,1 @@
+{"runs":[{"results":[{"ruleId":"TS2322","message":{"text":"type mismatch"},"locations":[{"physicalLocation":{"artifactLocation":{"uri":"src/a.ts"},"region":{"startLine":3}}}]}]}]}

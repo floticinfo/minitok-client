@@ -1,0 +1,119 @@
+name: cli-gui-matrix
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  quality:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node: ['22.19.0', '24.x']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - name: Record runner environment
+        shell: bash
+        run: |
+          node --version > runner-${{ matrix.os }}-${{ matrix.node }}.txt
+          npm --version >> runner-${{ matrix.os }}-${{ matrix.node }}.txt
+          uname -a >> runner-${{ matrix.os }}-${{ matrix.node }}.txt || ver >> runner-${{ matrix.os }}-${{ matrix.node }}.txt
+      - run: npm run test:pty
+      - run: node --test tests/test-cli-terminal-matrix.js tests/test-cli-gui-e2e.js tests/test-mcp-compatibility.js
+      - run: npm test > "test-results-${{ matrix.os }}-${{ matrix.node }}.log" 2>&1
+      - name: Write matrix summary
+        if: always()
+        shell: bash
+        run: |
+          echo "## cli-gui matrix" >> "$GITHUB_STEP_SUMMARY"
+          echo "OS: ${{ matrix.os }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Node: ${{ matrix.node }}" >> "$GITHUB_STEP_SUMMARY"
+          tail -n 14 "test-results-${{ matrix.os }}-${{ matrix.node }}.log" >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-gui-${{ matrix.os }}-${{ matrix.node }}
+          path: |
+            test-results-${{ matrix.os }}-${{ matrix.node }}.log
+            runner-${{ matrix.os }}-${{ matrix.node }}.txt
+
+  installer-contract:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.19.0'
+          cache: npm
+      - run: npm ci
+      - run: node --test tests/test-installer-integration.js tests/test-cli-commercial.js
+      - run: npm pack --dry-run --json > package-${{ matrix.os }}.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer-${{ matrix.os }}
+          path: package-${{ matrix.os }}.json
+
+  provider-live:
+    if: ${{ secrets.GOOGLE_API_KEY != '' || secrets.MINITOK_LIVE_OAUTH == '1' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.19.0'
+          cache: npm
+      - run: npm ci
+      - env:
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          MINITOK_LIVE_OAUTH: ${{ secrets.MINITOK_LIVE_OAUTH }}
+        run: |
+          node --test tests/test-provider-live.js 2>&1 | tee provider-live.log
+          if grep -E 'sk-[A-Za-z0-9]+|AIza[A-Za-z0-9_-]+|refresh_token|client_secret' provider-live.log; then exit 1; fi
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: provider-live-result
+          path: provider-live.log
+
+  provider-skip-report:
+    if: ${{ secrets.GOOGLE_API_KEY == '' && secrets.MINITOK_LIVE_OAUTH != '1' }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Live provider/OAuth tests skipped; configure GOOGLE_API_KEY or MINITOK_LIVE_OAUTH=1" >> "$GITHUB_STEP_SUMMARY"
+
+  npm-live-install:
+    if: ${{ secrets.MINITOK_LIVE_INSTALL == '1' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.19.0'
+          cache: npm
+      - run: npm ci
+      - run: MINITOK_INSTALL_DRY_RUN=1 ./scripts/install-verified.sh 1.3.3
+      - run: node --test tests/test-installer-integration.js tests/test-npm-installer-live.js
+
+  provider-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.19.0'
+          cache: npm
+      - run: npm ci
+      - run: node --test tests/test-cli-pty-matrix.js tests/test-cli-commercial.js

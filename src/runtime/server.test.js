@@ -49,6 +49,54 @@ describe("runtime PID cleanup", () => {
     assert.equal(fs.existsSync(files.tokenFile), true);
   });
 
+  it("requires bearer auth for HTTP initialize before MCP processing", async () => {
+    files = runtimeFiles();
+    const server = new RuntimeServer({ ...files, port: 0, entitlementRequired: false, runtimeToken: "http-secret" });
+    await server.start();
+    try {
+      const body = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05" } });
+      const missing = await request(server._port, { method: "POST", path: "/mcp", headers: { "Content-Type": "application/json" } }, body);
+      assert.equal(missing.status, 401);
+      const invalid = await request(server._port, { method: "POST", path: "/mcp", headers: { Authorization: "Bearer wrong", "Content-Type": "application/json" } }, body);
+      assert.equal(invalid.status, 401);
+      const valid = await request(server._port, { method: "POST", path: "/mcp", headers: { Authorization: "Bearer http-secret", "Content-Type": "application/json" } }, body);
+      assert.equal(valid.status, 200);
+      assert.equal(JSON.parse(valid.body).result.protocolVersion, "2024-11-05");
+    } finally { await server.stop(); }
+  });
+
+  it("exposes authenticated operational metrics without secrets", async () => {
+    files = runtimeFiles();
+    const server = new RuntimeServer({ ...files, port: 0, entitlementRequired: false, runtimeToken: "metrics-secret" });
+    await server.start();
+    try {
+      const unauthorized = await request(server._port, { path: "/metrics" });
+      assert.equal(unauthorized.status, 401);
+      const authorized = await request(server._port, { path: "/metrics", headers: { Authorization: "Bearer metrics-secret" } });
+      assert.equal(authorized.status, 200);
+      const body = JSON.parse(authorized.body);
+      assert.equal(body.ready, true);
+      assert.equal(body.auth_required, true);
+      assert.equal(body.entitlement_required, false);
+      assert.equal(Object.prototype.hasOwnProperty.call(body, "runtime_token"), false);
+    } finally { await server.stop(); }
+  });
+
+  it("serves MCP JSON-RPC over authenticated HTTP without changing REST auth", async () => {
+    files = runtimeFiles();
+    const server = new RuntimeServer({ ...files, port: 0, entitlementRequired: false });
+    await server.start();
+    const token = fs.readFileSync(files.tokenFile, "utf8").trim();
+    try {
+      const init = await request(server._port, { method: "POST", path: "/mcp", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } }, JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05" } }));
+      assert.equal(init.status, 200);
+      assert.equal(JSON.parse(init.body).result.protocolVersion, "2024-11-05");
+      assert.equal(server._mcp._authToken, token);
+      const list = await request(server._port, { method: "POST", path: "/mcp", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } }, JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} }));
+      assert.equal(JSON.parse(list.body).result.tools.length > 0, true);
+    } finally { await server.stop(); }
+  });
+
   it("handles localhost HTTP auth, chunked bodies, malformed JSON, and oversized bodies", async () => {
     files = runtimeFiles();
     const server = new RuntimeServer({ ...files, port: 0, entitlementRequired: false });
@@ -65,5 +113,59 @@ describe("runtime PID cleanup", () => {
     } finally {
       await server.stop();
     }
+  });
+
+  it("suppresses notification results and errors", async () => {
+    files = runtimeFiles();
+    const server = new RuntimeServer({ ...files, port: 0, entitlementRequired: false });
+    await server.start();
+    const headers = { Authorization: `Bearer ${fs.readFileSync(files.tokenFile, "utf8").trim()}`, "Content-Type": "application/json" };
+    try {
+      for (const message of [
+        { jsonrpc: "2.0", method: "initialize", params: { protocolVersion: "2024-11-05" } },
+        { jsonrpc: "2.0", method: "prompts/get", params: { name: "missing" } },
+        { jsonrpc: "2.0", method: "notifications/initialized" },
+      ]) {
+        const response = await request(server._port, { method: "POST", path: "/mcp", headers }, JSON.stringify(message));
+        assert.equal(response.status, 202);
+        assert.equal(response.body, "");
+      }
+    } finally { await server.stop(); }
+  });
+
+  it("returns Invalid Request for malformed single and batch messages", async () => {
+    files = runtimeFiles();
+    const server = new RuntimeServer({ ...files, port: 0, entitlementRequired: false });
+    await server.start();
+    const headers = { Authorization: `Bearer ${fs.readFileSync(files.tokenFile, "utf8").trim()}`, "Content-Type": "application/json" };
+    try {
+      for (const message of [null, [], { jsonrpc: "1.0", id: 1, method: "tools/list" }, { jsonrpc: "2.0", id: [], method: "tools/list" }, { jsonrpc: "2.0", id: 1, method: "tools/list", params: [] }]) {
+        const response = await request(server._port, { method: "POST", path: "/mcp", headers }, JSON.stringify(message));
+        const body = JSON.parse(response.body);
+        assert.equal(response.status, 200);
+        assert.equal(body.error?.code ?? body[0]?.error?.code, -32600);
+      }
+      const batch = await request(server._port, { method: "POST", path: "/mcp", headers }, JSON.stringify([{ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05" } }, null, { jsonrpc: "2.0", id: [], method: "tools/list" }]));
+      assert.equal(batch.status, 200);
+      assert.deepEqual(JSON.parse(batch.body).map(item => item.error?.code || item.id), [1, -32600, -32600]);
+    } finally { await server.stop(); }
+  });
+
+  it("returns only correlated responses for valid batches", async () => {
+    files = runtimeFiles();
+    const server = new RuntimeServer({ ...files, port: 0, entitlementRequired: false });
+    await server.start();
+    const headers = { Authorization: `Bearer ${fs.readFileSync(files.tokenFile, "utf8").trim()}`, "Content-Type": "application/json" };
+    try {
+      const response = await request(server._port, { method: "POST", path: "/mcp", headers }, JSON.stringify([
+        { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05" } },
+        { jsonrpc: "2.0", method: "notifications/initialized" },
+        { jsonrpc: "2.0", id: 2, method: "prompts/list", params: {} },
+      ]));
+      assert.equal(response.status, 200);
+      const body = JSON.parse(response.body);
+      assert.equal(body.length, 2);
+      assert.deepEqual(body.map(item => item.id), [1, 2]);
+    } finally { await server.stop(); }
   });
 });

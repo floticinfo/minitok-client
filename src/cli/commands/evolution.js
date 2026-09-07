@@ -15,6 +15,7 @@
 const { EvolutionOptIn } = require("../../evolution/optin");
 const { authorizeEntitlement } = require("../../entitlement/policy");
 const { getPlanId, getTelemetryPolicy } = require("../../evolution/telemetry-policy");
+const { KnowledgeStore } = require("../../evolution/knowledge");
 
 async function cmdEvolutionStatus() {
   const optIn = new EvolutionOptIn();
@@ -24,6 +25,12 @@ async function cmdEvolutionStatus() {
   const policy = getTelemetryPolicy(planId);
   console.log(`Plan: ${planId || "none"}`);
   console.log(`Data policy: ${policy.mode} (retention ${policy.retention_days} days)`);
+  const knowledge = new KnowledgeStore();
+  const stats = knowledge.stats();
+  console.log(`Local outcomes: ${stats.total}`);
+  console.log(`Success rate: ${(stats.success_rate * 100).toFixed(1)}%`);
+  console.log(`Average cycles: ${stats.avg_cycles}`);
+  console.log(`Average cost: $${stats.avg_cost.toFixed(4)}`);
   if (state.enabled) {
     console.log("Evolution upload: ENABLED");
     if (state.enabled_at) {
@@ -35,7 +42,8 @@ async function cmdEvolutionStatus() {
       console.log(`  Disabled at: ${state.disabled_at}`);
     }
   }
-  console.log("\nUpload also requires a valid entitlement, the plan policy above, and sanitized payload validation.");
+  console.log("\nLocal evolution analyzes outcomes and recommends policy changes; it does not train or modify the underlying AI model.");
+  console.log("Upload also requires a valid entitlement, the plan policy above, and sanitized payload validation.");
   return 0;
 }
 
@@ -70,7 +78,7 @@ function cmdEvolutionDisable() {
   optIn.disable();
   console.log("Evolution upload: DISABLED");
   console.log("\nNo evolution data will be uploaded to the server.");
-  console.log("Local evolution processing continues normally.");
+  console.log("Local evolution processing continues normally and remains available for rollback by restoring the prior configuration.");
   return 0;
 }
 

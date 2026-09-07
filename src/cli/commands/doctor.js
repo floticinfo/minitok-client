@@ -90,6 +90,13 @@ async function cmdDoctor() {
   }
 
   console.log(`\n${allOk ? "[ok] All checks passed" : "[error] Some checks failed — see above"}`);
+  if (!allOk) {
+    console.log("\nNext steps:");
+    if (!fs.existsSync(minitokHome)) console.log("  1. Run: minitok migrate");
+    if (!entitlement.allowed) console.log("  2. Activate: minitok activate <activation-key>");
+    if (!anyProvider) console.log("  3. Configure a provider API key or a custom provider in minitok.yml");
+    console.log("  Run minitok doctor again after applying the fixes.");
+  }
   return allOk ? 0 : 1;
 }
 

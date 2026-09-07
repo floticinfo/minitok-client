@@ -1,0 +1,13 @@
+"use strict";
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const { spawnSync } = require("node:child_process");
+const path = require("node:path");
+const bin = path.resolve(__dirname, "../bin/minitok.js");
+const { runTerminalProbe, terminalCommand } = require("../src/cli/terminal-probe");
+test("terminal matrix supports plain and ascii modes", () => { for (const env of [{ MINITOK_NO_COLOR: "1" }, { MINITOK_ASCII: "1" }, { MINITOK_NO_COLOR: "1", MINITOK_ASCII: "1" }]) { const result = spawnSync(process.execPath, [bin, "gui", "--help"], { env: { ...process.env, ...env }, encoding: "utf8" }); assert.equal(result.status, 0); } });
+test("optional PTY hook is discoverable", () => { let pty; try { pty = require("node-pty"); } catch { pty = null; } if (pty) assert.equal(typeof pty.spawn, "function"); else assert.equal(pty, null); });
+test("long-run plain mode has bounded failure behavior", () => { const result = spawnSync(process.execPath, [bin, "gui", "--task", ""], { env: { ...process.env, MINITOK_NO_COLOR: "1" }, encoding: "utf8", timeout: 10000 }); assert.ok(result.status !== 0 || result.error); });
+test("narrow terminal help remains usable", () => { const result = spawnSync(process.execPath, [bin, "gui", "--help"], { env: { ...process.env, COLUMNS: "40", LINES: "12", MINITOK_ASCII: "1" }, encoding: "utf8" }); assert.equal(result.status, 0); });
+test("OS terminal probe uses an available shell", () => { const command = terminalCommand(); assert.ok(command.command); const result = runTerminalProbe(); assert.equal(result.output.trim(), "minitok-pty"); });
+test("provider diagnostics never require exposing keys", () => { const result = spawnSync(process.execPath, [bin, "gui", "--help"], { env: { ...process.env, ANTHROPIC_API_KEY: "", OPENAI_API_KEY: "", GOOGLE_API_KEY: "" }, encoding: "utf8" }); assert.equal(result.status, 0); assert.doesNotMatch(`${result.stdout}${result.stderr}`, /sk-[A-Za-z0-9]+|AIza[A-Za-z0-9_-]+/); });

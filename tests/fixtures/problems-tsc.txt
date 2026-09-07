@@ -1,0 +1,1 @@
+{"file":"src/a.ts","line":3,"message":"Type mismatch"}

@@ -6,6 +6,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 const providerModule = require("../llm/provider");
 const { loadConfig, resolveProviderName } = require("../config/loader");
 const { intel } = require("./intel");
@@ -80,16 +81,102 @@ function compactContext(repoContext, budgetChars) {
   return result.text;
 }
 
+function buildRoleOptions(role = {}, signal) {
+  const roleOptions = { model: role.model, signal };
+  if (role.reasoning) {
+    roleOptions.reasoning_effort = role.reasoning;
+    roleOptions.thinking = role.reasoning;
+  }
+  if (role.thinking !== undefined) roleOptions.thinking = role.thinking;
+  if (role.effort) roleOptions.effort = role.effort;
+  if (role.thinking_budget) {
+    roleOptions.thinking_budget = role.thinking_budget;
+    roleOptions.thinking = { enabled: true, budget_tokens: role.thinking_budget };
+  }
+  return roleOptions;
+}
+
+function approvalRequest(changesResult, opts, now = Date.now()) {
+  const timeout = Number(opts.approvalTimeoutMs) || 30 * 60 * 1000;
+  return {
+    type: "approval_request",
+    run_id: opts.runId || null,
+    nonce: crypto.randomBytes(24).toString("hex"),
+    expires_at: now + timeout,
+    files: (changesResult.changes || []).map(change => ({ action: change.action, file: change.file, digest: crypto.createHash("sha256").update(JSON.stringify(change)).digest("hex") })),
+  };
+}
+
+function writeApprovalRequest(file, request) {
+  const target = path.resolve(file);
+  const temporary = `${target}.tmp.${process.pid}.${crypto.randomBytes(8).toString("hex")}`;
+  const payload = `${JSON.stringify(request)}\n`;
+  const fd = fs.openSync(temporary, "wx", 0o600);
+  try {
+    fs.writeFileSync(fd, payload, { encoding: "utf8" });
+    fs.fsyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
+  try {
+    fs.chmodSync(temporary, 0o600);
+    fs.renameSync(temporary, target);
+  } catch (error) {
+    try { fs.rmSync(temporary, { force: true }); } catch {}
+    throw error;
+  }
+}
+
+function validateApprovalResponse(response, request, now = Date.now()) {
+  if (!request || request.type !== "approval_request" || typeof request.nonce !== "string" || (typeof request.run_id !== "string" && request.run_id !== null) || !Number.isFinite(request.expires_at)) return false;
+  if (!response || typeof response !== "object" || Array.isArray(response)) return false;
+  if (Object.keys(response).some(key => !["decision", "nonce", "run_id"].includes(key))) return false;
+  if (response.decision !== "approve" && response.decision !== "reject") return false;
+  if (typeof response.nonce !== "string" || response.nonce !== request.nonce) return false;
+  if (response.run_id !== request.run_id) return false;
+  if (now >= request.expires_at) return false;
+  return true;
+}
+
 /**
  * Prompt user for confirmation of file changes.
  * Returns true if accepted, false if rejected.
  */
 async function promptConfirmation(changesResult, opts) {
-  // dry-run never needs confirmation
   if (opts.dryRun) return true;
 
-  // auto-accept flag skips confirmation
-  if (opts.autoAccept) return true;
+  if (opts.approvalFile) {
+    const approvalPath = path.resolve(opts.approvalFile);
+    const workspaceRoot = path.resolve(opts.repoRoot || process.cwd());
+    const allowedRoot = path.join(workspaceRoot, ".minitok");
+    const normalized = process.platform === "win32" ? approvalPath.toLowerCase() : approvalPath;
+    const normalizedRoot = process.platform === "win32" ? allowedRoot.toLowerCase() : allowedRoot;
+    if (!(normalized === normalizedRoot || normalized.startsWith(`${normalizedRoot}${path.sep}`))) throw new Error("approval_file must be under workspace/.minitok");
+    const responsePath = `${approvalPath}.response`;
+    const request = approvalRequest(changesResult, opts);
+    fs.mkdirSync(path.dirname(approvalPath), { recursive: true });
+    try { fs.rmSync(responsePath, { force: true }); } catch {}
+    writeApprovalRequest(approvalPath, request);
+    console.log(`MINITOK_APPROVAL_REQUEST ${JSON.stringify(request)}`);
+    const deadline = Date.now() + (Number(opts.approvalTimeoutMs) || 30 * 60 * 1000);
+    while (Date.now() < deadline) {
+      try {
+        const response = JSON.parse(fs.readFileSync(responsePath, "utf8"));
+        if (!validateApprovalResponse(response, request)) {
+          try { fs.rmSync(responsePath, { force: true }); } catch {}
+          continue;
+        }
+        fs.rmSync(responsePath, { force: true });
+        fs.rmSync(approvalPath, { force: true });
+        return response.decision === "approve";
+      } catch {}
+      await new Promise(resolve => setTimeout(resolve, 150));
+    }
+    try { fs.rmSync(approvalPath, { force: true }); } catch {}
+    return false;
+  }
+
+  if (opts.autoAccept === true && opts.allowAutoAccept !== false) return true;
 
   const changes = changesResult.changes || [];
   if (changes.length === 0) return true;
@@ -186,9 +273,9 @@ async function runPipelineInWorkspace(task, opts = {}) {
 
   const hardCycleLimit = Math.max(1, Number(config.budget.max_cycles_hard_limit) || 100);
   const hardTokenLimit = Math.max(1, Number(config.budget.token_hard_limit) || 2000000);
-  const maxCyclesSetting = config.budget.max_cycles;
+  const maxCyclesSetting = opts.overrides?.budget?.max_cycles ?? config.budget.max_cycles;
   const maxCycles = maxCyclesSetting === "unlimited" || maxCyclesSetting === 0 || maxCyclesSetting == null ? Infinity : Math.min(Number(maxCyclesSetting) || 1, hardCycleLimit);
-  const tokenSetting = config.budget.token_budget;
+  const tokenSetting = opts.overrides?.budget?.token_budget ?? config.budget.token_budget;
   const tokenBudget = tokenSetting === "unlimited" || tokenSetting === 0 || tokenSetting == null ? Infinity : Math.min(Number(tokenSetting) || 1, hardTokenLimit);
   const originalGoal = task;
   const hardTimeoutMs = (Number(config.execution?.timeout_hard_limit_sec) || 86400) * 1000;
@@ -279,7 +366,7 @@ async function runPipelineInWorkspace(task, opts = {}) {
   try {
   for (let cycle = 1; cycle <= adaptedMaxCycles; cycle++) {
     // Graceful shutdown check
-    if (_abortRequested) {
+    if (_abortRequested || opts.signal?.aborted) {
       console.log("🛑 Pipeline interrupted by signal.");
       break;
     }
@@ -307,30 +394,24 @@ async function runPipelineInWorkspace(task, opts = {}) {
     const repoContext = compactContext(rawRepoContext, budgetChars);
     writeContextManifest(repoRoot, { goal: task, source: "pipeline", budget_chars: budgetChars, original_chars: rawRepoContext.length, final_chars: repoContext.length, files: ["package.json", "README.md", "minitok.yml"].filter(file => fs.existsSync(path.join(repoRoot, file))) });
 
-    // Build per-role provider options (model + reasoning/thinking)
-    const roleOpts = (role) => {
-      const r = config.roles[role] || {};
-      const opts = { model: r.model };
-      // Reasoning/thinking: pass to provider based on adapter type
-      if (r.reasoning) opts.reasoning_effort = r.reasoning;    // OpenAI o1/o3/GPT-5.6
-      if (r.reasoning) opts.thinking = r.reasoning;             // Anthropic adaptive thinking
-      if (r.effort) opts.effort = r.effort;                     // Anthropic effort level
-      if (r.thinking_budget) opts.thinking = { enabled: true, budget_tokens: r.thinking_budget };
-      return opts;
-    };
+    const roleOpts = (role) => buildRoleOptions(config.roles[role], opts.signal);
 
+    opts.onProgress?.({ phase: "intel", state: "started", cycle });
     console.log("  🧭 Gathering repository intelligence...");
     const intelResult = await intel(roleProviders.intel.provider, task, repoContext, roleOpts("intel"));
     results.totalTokens.input += intelResult.tokens?.input || 0;
     results.totalTokens.output += intelResult.tokens?.output || 0;
     addCost("intel", intelResult.tokens);
+    opts.onProgress?.({ phase: "intel", state: "completed", cycle, tokens: intelResult.tokens, total_tokens: results.totalTokens, total_cost: results.totalCost });
 
     // Phase 2: Plan
+    opts.onProgress?.({ phase: "plan", state: "started", cycle });
     console.log("  📋 Planning...");
     const planResult = await plan(roleProviders.plan.provider, task, repoContext, { ...roleOpts("plan"), intelligence: intelResult.intelligence });
     results.totalTokens.input += planResult.tokens?.input || 0;
     results.totalTokens.output += planResult.tokens?.output || 0;
     addCost("plan", planResult.tokens);
+    opts.onProgress?.({ phase: "plan", state: "completed", cycle, tokens: planResult.tokens, total_tokens: results.totalTokens, total_cost: results.totalCost });
     console.log(`     Plan: ${planResult.plan.error ? "❌ " + planResult.plan.error : "✅ " + (planResult.plan.steps?.length || 0) + " steps"}`);
 
     if (planResult.plan.error) {
@@ -344,11 +425,13 @@ async function runPipelineInWorkspace(task, opts = {}) {
     }
 
     // Phase 3: Implement
+    opts.onProgress?.({ phase: "work", state: "started", cycle });
     console.log("  🔧 Implementing...");
     const implResult = await implement(roleProviders.work.provider, planResult, repoContext, roleOpts("work"));
     results.totalTokens.input += implResult.tokens?.input || 0;
     results.totalTokens.output += implResult.tokens?.output || 0;
     addCost("work", implResult.tokens);
+    opts.onProgress?.({ phase: "work", state: "completed", cycle, tokens: implResult.tokens, total_tokens: results.totalTokens, total_cost: results.totalCost });
 
     if (implResult.changes.error) {
       console.log(`     Implement: ❌ ${implResult.changes.error}`);
@@ -367,7 +450,7 @@ async function runPipelineInWorkspace(task, opts = {}) {
       // Already confirmed this run, or dry-run (no mutation)
       applyResult = applyChanges(repoRoot, implResult.changes, opts.dryRun);
     } else {
-      const accepted = await promptConfirmation(implResult.changes, opts);
+      const accepted = await promptConfirmation(implResult.changes, { ...opts, repoRoot });
       if (!accepted) {
         console.log("  ❌ Changes rejected by user. Stopping pipeline.");
         results.cycles.push({ cycle, plan: planResult.plan, implement: implResult.changes, status: "rejected_by_user" });
@@ -379,15 +462,19 @@ async function runPipelineInWorkspace(task, opts = {}) {
     console.log(`     Applied: ${applyResult.applied} changes${applyResult.errors.length ? `, ${applyResult.errors.length} errors` : ""}`);
 
     // Phase 4: Check
+    opts.onProgress?.({ phase: "verify", state: "started", cycle });
     console.log("  🧪 Running verification command...");
     const checkResult = opts.dryRun ? { passed: true, evidence: { status: "skipped", command: "dry-run", output: "" } } : verifyCommand(repoRoot, { script_path: config.validation?.script_path, timeout_ms: config.validation?.timeout_ms });
+    opts.onProgress?.({ phase: "verify", state: "completed", cycle, passed: checkResult.passed, total_tokens: results.totalTokens, total_cost: results.totalCost });
 
     // Phase 5: Review
+    opts.onProgress?.({ phase: "review", state: "started", cycle });
     console.log("  🔍 Reviewing...");
     const verifyResult = await verify(roleProviders.review.provider, task, { changes: implResult.changes, check: checkResult }, repoRoot, roleOpts("review"));
     results.totalTokens.input += verifyResult.tokens?.input || 0;
     results.totalTokens.output += verifyResult.tokens?.output || 0;
     addCost("review", verifyResult.tokens);
+    opts.onProgress?.({ phase: "review", state: "completed", cycle, tokens: verifyResult.tokens, total_tokens: results.totalTokens, total_cost: results.totalCost });
     const reviewVerdict = verifyResult.review.verdict || "UNKNOWN";
     const checkPassed = checkResult.passed;
     const verdict = checkPassed ? reviewVerdict : "REJECT";
@@ -555,6 +642,7 @@ async function runPipelineInWorkspace(task, opts = {}) {
 }
 
 async function runPipeline(task, opts = {}) {
+  if (opts.signal?.aborted) throw Object.assign(new Error("Run cancelled"), { code: "RUN_CANCELLED" });
   if (opts.isolatedWorkspace) return runPipelineInWorkspace(task, opts);
   const { createIsolatedWorkspace, applyWorkspaceDiff, removeIsolatedWorkspace } = require("../workspace/isolation");
   const { acquireRunLock } = require("../state/run-lock");
@@ -616,4 +704,4 @@ async function runPipeline(task, opts = {}) {
   }
 }
 
-module.exports = { runPipeline, runPipelineInWorkspace, getRepoContext, compactContext, promptConfirmation };
+module.exports = { runPipeline, runPipelineInWorkspace, getRepoContext, compactContext, buildRoleOptions, promptConfirmation, approvalRequest, validateApprovalResponse, writeApprovalRequest };

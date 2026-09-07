@@ -52,7 +52,7 @@ async function implement(provider, planResult, repoContext, options = {}) {
   let parsedResult;
   for (let attempt = 1; attempt <= attempts; attempt++) {
     const response = await provider.complete(messages, {
-      model: options.model,
+      ...options,
       max_tokens: options.max_tokens || 8192,
       temperature: 0.2,
     });

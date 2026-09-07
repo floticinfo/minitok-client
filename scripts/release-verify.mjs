@@ -3,6 +3,8 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { evaluateCommercialReadiness } from "./commercial-readiness.mjs";
+import { validateManifest, readGitData } from "./release-manifest.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const run = (command, args) => execFileSync(command, args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
@@ -12,14 +14,22 @@ const lockJson = JSON.parse(readFileSync(path.join(root, "package-lock.json"), "
 const errors = [];
 const releaseTag = process.env.RELEASE_TAG;
 
+
 try {
+  const readiness = evaluateCommercialReadiness();
+  for (const result of readiness) {
+    if (result.status === "BLOCKED" || result.status === "UNVERIFIED") errors.push(`commercial readiness ${result.id}: ${result.status}`);
+  }
+
   const head = git("rev-parse", "HEAD");
   const tree = git("rev-parse", "HEAD^{tree}");
-  if (!head || !tree) errors.push("git HEAD/tree identity is unavailable");
-  if (git("status", "--porcelain")) errors.push("working tree is not clean");
+  const status = git("status", "--short");
   const tags = git("tag", "--points-at", "HEAD").split(/\r?\n/).filter(Boolean);
+  if (!head || !tree) errors.push("git HEAD/tree identity is unavailable");
+  if (status) errors.push(`working tree is not clean; modified paths:\n${status}`);
+
   const expectedTags = [`v${packageJson.version}`, packageJson.version];
-  if (!tags.some(tag => expectedTags.includes(tag))) errors.push(`HEAD is not tagged for version ${packageJson.version}`);
+  if (!tags.some(tag => expectedTags.includes(tag))) errors.push(`HEAD ${head || "(unknown)"} has no expected release tag; found: ${tags.join(", ") || "(none)"}`);
   if (releaseTag && !expectedTags.includes(releaseTag)) errors.push(`release ref ${releaseTag} does not match package version ${packageJson.version}`);
   if (lockJson.packages?.[""]?.version !== packageJson.version) errors.push("package-lock version does not match package version");
   const output = run(process.platform === "win32" ? process.env.ComSpec || "cmd.exe" : "npm", process.platform === "win32" ? ["/d", "/s", "/c", "npm pack --json"] : ["pack", "--json"]);

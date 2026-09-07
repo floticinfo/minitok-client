@@ -1,6 +1,24 @@
 # Changelog
 
+## 1.3.4 - 2026-09-07
+
+### Release integrity
+
+- Added clean-source release manifests binding the CLI package to its commit, tree, tag, and artifact hashes.
+- Added read-only npm registry compatibility verification and integrity checks for verified Windows installation.
+- Added stricter commercial approval evidence validation and deterministic CLI release gates.
+
+### CLI
+
+- Added standard UI, billing, account, license, and run aliases while preserving existing commands.
+- Improved fullscreen compose, conversation scrolling, terminal resize, cleanup, and non-TTY behavior.
+
 ## 1.3.3 - 2026-09-04
+
+### Commercial contract
+
+- Current paid plans are Open, Select, and Private; there is no free plan.
+- Open supports consented per-run telemetry, Select supports consented aggregate-only telemetry, and Private disables telemetry upload.
 
 ### Packaging
 

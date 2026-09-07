@@ -18,6 +18,10 @@ describe("isNewerVersion", () => {
     assert.equal(isNewerVersion("2.0.0", "1.9.9"), true);
     assert.equal(isNewerVersion("1.3.1", "1.3.1"), false);
     assert.equal(isNewerVersion("1.3.0", "1.3.1"), false);
+    assert.equal(isNewerVersion("1.3.0-beta.2", "1.3.0-beta.1"), true);
+    assert.equal(isNewerVersion("1.3.0", "1.3.0-rc.1"), true);
+    assert.equal(isNewerVersion("1.3.0-alpha", "1.3.0"), false);
+    assert.equal(isNewerVersion("1.3.0-beta.10", "1.3.0-beta.2"), true);
   });
 });
 

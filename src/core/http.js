@@ -94,7 +94,7 @@ async function fetchWithTimeout(urlString, options = {}, timeoutMs = 10000) {
       if (["json", "text", "arrayBuffer", "blob", "formData"].includes(String(property))) {
         return async (...args) => { try { return await target[property](...args); } catch (error) { throw timeoutError(error); } finally { finish(); } };
       }
-      return Reflect.get(target, property, receiver);
+      return Reflect.get(target, property, target);
     },
   });
 }

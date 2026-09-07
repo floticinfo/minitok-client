@@ -1,0 +1,15 @@
+**/*.ts
+**/*.test.js
+**/test/**
+**/tests/**
+dist/test/
+test-package.json
+package-lock.json
+node_modules/
+runtime/node_modules/**
+.vscode-test/
+*.vsix
+artifacts/
+rasterize-icon.cjs
+rasterize-representative.cjs
+COMMERCIAL_READINESS.md

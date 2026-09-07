@@ -15,9 +15,10 @@ const patterns = [
   /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/g,
   /(?:api[_-]?key|secret|token)\s*[:=]\s*["'][A-Za-z0-9_\-./+=]{24,}["']/gi,
 ];
+const generatedRuntime = relative => relative.split(/[\\/]/).includes(".vscode-test");
 const findings = [];
 for (const relative of tracked) {
-  if (allowlist.has(relative)) continue;
+  if (allowlist.has(relative) || generatedRuntime(relative)) continue;
   const filePath = path.join(root, relative);
   if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) continue;
   const content = fs.readFileSync(filePath, "utf8");

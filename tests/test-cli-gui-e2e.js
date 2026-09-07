@@ -1,0 +1,14 @@
+"use strict";
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const { restoreCheckpoint } = require("../src/runtime/checkpoint");
+const { sessionResumeContext } = require("../src/runtime/resume");
+const { handleCommand } = require("../src/cli/gui-commands");
+test("resume context includes prior run metadata", () => assert.match(sessionResumeContext({ run_id: "r1", status: "failed", total_tokens: 12, total_cost: 0.1, resume_hint: "retry" }), /Previous run: r1/));
+test("provider conversation state excludes secrets", () => { const fs = require("fs"); const path = require("path"); const text = fs.readFileSync(path.join(__dirname, "../src/cli/gui-run.js"), "utf8"); assert.doesNotMatch(text, /API_KEY|client_secret|refresh_token/); });
+test("resume context accepts role routing and interruption metadata", () => { const text = sessionResumeContext({ run_id: "r2", status: "cancelled", repo: process.cwd(), resume_hint: "retry", checkpoint_path: ".minitok/checkpoints/r2", prompt_sequence: ["first"], roles: { plan: { provider: "openai", model: "gpt" } } }); assert.match(text, /Previous status: cancelled/); assert.match(text, /Checkpoint/); });
+test("checkpoint restore rejects missing patch", () => assert.throws(() => restoreCheckpoint(process.cwd(), "missing-checkpoint"), /Checkpoint patch not found/));
+test("gui command handler accepts session listing", () => assert.equal(handleCommand(":sessions", { repo: process.cwd() }), true));
+test("file security blocks secret paths", () => assert.equal(handleCommand(":file .env", { repo: process.cwd() }), true));
+test("problems command is handled", () => assert.equal(handleCommand(":problems", { repo: process.cwd() }), true));
+test("provider validation command is handled", () => assert.equal(handleCommand(":provider-test openai", { repo: process.cwd() }), true));

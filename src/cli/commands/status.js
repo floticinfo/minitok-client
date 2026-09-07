@@ -10,7 +10,7 @@ const { authorizeEntitlement } = require("../../entitlement/policy");
 const { resolveServerUrl } = require("./server-config");
 const { EvolutionOptIn } = require("../../evolution/optin");
 
-async function cmdStatus() {
+async function cmdStatusHuman(options = {}) {
   console.log(`minitok ${minitokVersion}\n`);
 
   // --- Entitlement section ---
@@ -50,7 +50,13 @@ async function cmdStatus() {
 
   // --- Workspace section ---
   const wm = new WorkspaceManager();
-  const ws = wm.currentWorkspace();
+  let ws;
+  try {
+    ws = options.workspace ? wm.resolve(options.workspace) : wm.currentWorkspace();
+  } catch (error) {
+    console.error(`Workspace error: ${error.message}`);
+    return 1;
+  }
 
   if (!ws) {
     console.log("No workspace set.\nRun: minitok workspace add .");
@@ -79,12 +85,26 @@ async function cmdStatus() {
   const config = loadConfig(path.join(ws.repository_root, "minitok.yml"));
   const providers = await detectAvailableProviders(config);
   console.log(`\nProviders: ${providers.length > 0 ? providers.join(", ") : "none detected"}`);
+  const configPath = path.join(ws.repository_root, "minitok.yml");
+  console.log(`Config:    ${require("fs").existsSync(configPath) ? configPath : "missing — run: minitok migrate"}`);
   console.log(`Roles:`);
   for (const [role] of Object.entries(config.roles)) {
     console.log(`  ${role.padEnd(8)} → ${resolveProviderName(config, role) || "unset"}`);
   }
 
   return 0;
+}
+
+async function cmdStatus(options = {}) {
+  if (options.json) {
+    const ws = new WorkspaceManager();
+    const workspace = options.workspace ? ws.resolve(options.workspace) : ws.currentWorkspace();
+    const gate = await authorizeEntitlement();
+    const config = workspace ? loadConfig(path.join(workspace.repository_root, "minitok.yml")) : null;
+    const providers = config ? await detectAvailableProviders(config) : [];
+    return { version: minitokVersion, entitlement: { state: gate.state, allowed: gate.allowed, plan: gate.entitlement?.payload?.plan_id || gate.entitlement?.plan_id || null, expires_at: gate.entitlement?.payload?.expires_at || gate.entitlement?.expires_at || null }, workspace, providers, roles: config ? Object.fromEntries(Object.keys(config.roles).map(role => [role, resolveProviderName(config, role) || null])) : {} };
+  }
+  return cmdStatusHuman(options);
 }
 
 module.exports = { cmdStatus };

@@ -1,5 +1,9 @@
 node_modules/
 *.tgz
+*.vsix
+extension/artifacts/
+extension/*.vsix
+.vscode-test/
 .DS_Store
 last-run.json
 .env

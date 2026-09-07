@@ -1,6 +1,6 @@
 {
   "name": "@flotic/minitok",
-  "version": "1.3.3",
+  "version": "1.3.4",
   "description": "Repository-aware autonomous coding workflow driver",
   "main": "src/index.js",
   "bin": {
@@ -10,12 +10,33 @@
     "access": "public"
   },
   "scripts": {
-    "test": "node --test",
+    "gui": "node bin/minitok.js gui",
+    "package:cli": "node scripts/artifact-report.mjs cli",
+    "package:extension": "node scripts/package-extension.mjs",
+    "release:extension": "npm run typecheck:extension && npm run extension:commercial:check && npm run extension:marketplace:check && npm run package:extension && npm run release:artifacts",
+    "typecheck:extension": "tsc -p extension/tsconfig.json",
+    "artifact:report": "node scripts/artifact-report.mjs report",
+    "artifact:runtime": "node scripts/artifact-report.mjs runtime",
+    "artifact:http": "node scripts/artifact-report.mjs http",
+    "test": "node --test tests/**/*.js src/**/*.test.js",
     "lint": "eslint --max-warnings=0 bin src tests",
     "typecheck": "tsc -p tsconfig.json",
-    "release:check": "npm test && npm run lint && npm run typecheck && npm audit --audit-level=high && npm run docs:check && node scripts/secret-scan.mjs && npm pack --dry-run --json && npm run test:packed-install && node VERIFY_CMD.mjs && npm run release:verify",
+    "test:pty": "node --test tests/test-cli-pty-matrix.js tests/test-cli-commercial.js",
+    "release:check": "npm test && npm run lint && npm run typecheck && npm audit --audit-level=high && npm run docs:check && node scripts/secret-scan.mjs && npm run stage2:parity && npm pack --dry-run --json && npm run test:packed-install && node VERIFY_CMD.mjs && npm run release:verify",
     "docs:check": "node scripts/documentation-consistency.mjs",
     "release:verify": "node scripts/release-verify.mjs",
+    "release:manifest": "node scripts/release-manifest.mjs validate",
+    "release:manifest:generate": "node scripts/release-manifest.mjs generate",
+    "registry:compat": "node scripts/registry-compat.mjs",
+    "registry:verify": "node scripts/registry-compat.mjs",
+    "commercial:readiness": "node scripts/commercial-readiness.mjs --json",
+    "readiness:all": "node scripts/readiness-checks.mjs --target all",
+    "readiness:checks": "node scripts/readiness-checks.mjs --target all",
+    "stage2:parity": "node scripts/stage2-parity.mjs",
+    "release:artifacts": "node scripts/release-artifact-check.mjs",
+    "extension:marketplace:check": "npm run typecheck:extension && node scripts/marketplace-compat.mjs",
+    "extension:commercial:check": "npm run typecheck:extension && node scripts/extension-commercial-check.mjs",
+    "test:release-artifacts": "node --test tests/test-release-artifacts.js",
     "test:packed-install": "node scripts/packed-install-smoke.mjs",
     "start": "node bin/minitok.js"
   },
@@ -53,13 +74,17 @@
     "src/",
     "!src/**/*.test.js",
     "!src/cli/commands/admin-activate.js",
+    "!src/admin/",
+    "!bin/minitok-admin.js",
+    "!extension/",
 
     "LICENSE",
     "README.md",
     "CHANGELOG.md",
     "EULA.md",
     "POLICY.md",
-    "DATA_CLASSIFICATION.md"
+    "DATA_CLASSIFICATION.md",
+    "COMMERCIAL_READINESS.md"
   ],
   "devDependencies": {
     "@eslint/js": "^10.0.1",

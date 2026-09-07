@@ -206,6 +206,7 @@ class LLMProvider {
  */
 async function fetchWithTimeout(url, opts = {}, timeoutMs = FETCH_TIMEOUT_MS, retryOverride = {}) {
   const policy = { ..._retryPolicy, ...retryOverride };
+  const externalSignal = retryOverride.signal || opts.signal;
   const deadline = Date.now() + timeoutMs;
   const attempts = (/** @type {any} */ (opts)).retry_network_errors === false ? 1 : Math.max(1, policy.maxRetries + 1);
   const requestOpts = { ...opts };
@@ -215,6 +216,9 @@ async function fetchWithTimeout(url, opts = {}, timeoutMs = FETCH_TIMEOUT_MS, re
     const remaining = deadline - Date.now();
     if (remaining <= 0) throw new Error("Provider request deadline exceeded");
     const controller = new AbortController();
+    const abortExternal = () => controller.abort(externalSignal.reason);
+    if (externalSignal?.aborted) throw Object.assign(new Error("Provider request cancelled"), { code: "RUN_CANCELLED" });
+    externalSignal?.addEventListener("abort", abortExternal, { once: true });
     const timer = setTimeout(() => controller.abort(), remaining);
     try {
       const dispatcher = /** @type {any} */ (requestOpts).dispatcher || getProxyDispatcher(url);
@@ -241,6 +245,7 @@ async function fetchWithTimeout(url, opts = {}, timeoutMs = FETCH_TIMEOUT_MS, re
       await new Promise(resolve => setTimeout(resolve, delay));
     } finally {
       clearTimeout(timer);
+      externalSignal?.removeEventListener("abort", abortExternal);
     }
   }
   throw lastError;
@@ -330,7 +335,7 @@ class AnthropicProvider extends LLMProvider {
 
     const endpointTransport = await resolvePublicEndpoint(this.baseUrl, "Anthropic endpoint");
     const headers = { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" };
-    const res = await fetchWithTimeout(`${endpointTransport.url}/v1/messages`, { method: "POST", headers, body: JSON.stringify(body), ...(endpointTransport.dispatcher ? { dispatcher: endpointTransport.dispatcher } : {}) });
+    const res = await fetchWithTimeout(`${endpointTransport.url}/v1/messages`, { method: "POST", headers, body: JSON.stringify(body), signal: options.signal, ...(endpointTransport.dispatcher ? { dispatcher: endpointTransport.dispatcher } : {}) });
     if (!res.ok) throw providerError("Anthropic", res.status);
     const data = await res.json();
     const textBlocks = (data.content || []).filter(b => b.type === "text");
@@ -368,6 +373,7 @@ class OpenAIProvider extends LLMProvider {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: "Bearer " + apiKey },
       body: JSON.stringify(body),
+      signal: options.signal,
       ...(endpointTransport.dispatcher ? { dispatcher: endpointTransport.dispatcher } : {}),
     });
     if (!res.ok) throw providerError("OpenAI", res.status);
@@ -414,6 +420,7 @@ class GoogleProvider extends LLMProvider {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
       body: JSON.stringify(body),
+      signal: options.signal,
       ...(endpointTransport.dispatcher ? { dispatcher: endpointTransport.dispatcher } : {}),
     });
     if (!res.ok) throw providerError("Google", res.status);
@@ -470,7 +477,7 @@ class OpenRouterProvider extends LLMProvider {
     if (effort) body.reasoning_effort = effort;
     const endpointTransport = await resolvePublicEndpoint(this.baseUrl, "OpenRouter endpoint");
     const headers = { "Content-Type": "application/json", Authorization: "Bearer " + apiKey, "HTTP-Referer": "https://github.com/minitok/minitok", "X-Title": "minitok" };
-    const res = await fetchWithTimeout(`${endpointTransport.url}/v1/chat/completions`, { method: "POST", headers, body: JSON.stringify(body), ...(endpointTransport.dispatcher ? { dispatcher: endpointTransport.dispatcher } : {}) });
+    const res = await fetchWithTimeout(`${endpointTransport.url}/v1/chat/completions`, { method: "POST", headers, body: JSON.stringify(body), signal: options.signal, ...(endpointTransport.dispatcher ? { dispatcher: endpointTransport.dispatcher } : {}) });
     if (!res.ok) throw providerError("OpenRouter", res.status);
     const data = await res.json();
     return { text: data.choices?.[0]?.message?.content || "", model: data.model, usage: data.usage || {}, tokens: _countTokens(data.usage) };
@@ -506,7 +513,7 @@ class CustomProvider extends LLMProvider {
     const endpointTransport = await resolvePublicCustomEndpoint(this.baseUrl);
     const auth = await this._resolveAuth();
     const apiKey = this.apiKey || auth.token || "";
-    const model = options.model || this.config.model || (this.models[0]?.id) || "default";
+    const model = validateProviderModel(this.name, options.model || this.config.model || (this.models[0]?.id) || "default", this.config);
     const body = { model, messages: messages.map(m => ({ role: m.role, content: m.content })), max_tokens: options.max_tokens || 4096 };
     const headers = { "Content-Type": "application/json", ...(auth.headers || {}) };
     if (apiKey && !headers.Authorization && !headers["x-api-key"]) {
@@ -516,7 +523,7 @@ class CustomProvider extends LLMProvider {
     }
     const apiPath = this.baseUrl.endsWith("/v1") ? "/chat/completions" : "/v1/chat/completions";
     const requestHeaders = { ...headers, ...endpointTransport.headers };
-    const res = await fetchWithTimeout(`${endpointTransport.url}${apiPath}`, { method: "POST", headers: requestHeaders, body: JSON.stringify(body), ...(endpointTransport.dispatcher ? { dispatcher: endpointTransport.dispatcher } : {}) });
+    const res = await fetchWithTimeout(`${endpointTransport.url}${apiPath}`, { method: "POST", headers: requestHeaders, body: JSON.stringify(body), signal: options.signal, ...(endpointTransport.dispatcher ? { dispatcher: endpointTransport.dispatcher } : {}) });
     if (!res.ok) throw providerError(this.name, res.status);
     const data = await res.json();
     return { text: data.choices?.[0]?.message?.content || "", model: data.model || model, usage: data.usage || {}, tokens: _countTokens(data.usage) };
@@ -541,6 +548,13 @@ class CustomProvider extends LLMProvider {
       return (data.data || []).map(m => ({ id: m.id, display: m.id, context_window: m.context_length || null, max_output: null }));
     } catch { return []; }
   }
+}
+
+function validateProviderModel(providerName, model, config = {}) {
+  if (typeof model !== "string" || !model.trim()) throw new Error(`${providerName}: model must be a non-empty string`);
+  const configured = Array.isArray(config.models) ? config.models.map(item => typeof item === "string" ? item : item?.id).filter(Boolean) : [];
+  if (configured.length && !configured.includes(model)) throw new Error(`${providerName}: model is not in the configured model policy`);
+  return model;
 }
 
 function createProvider(name, config = {}) {
@@ -574,5 +588,5 @@ async function detectAvailableProviders(config) {
   return p;
 }
 
-module.exports = { LLMProvider, FallbackProvider, AnthropicProvider, OpenAIProvider, GoogleProvider, OpenRouterProvider, CustomProvider, createProvider, detectAvailableProviders, fetchWithTimeout, configureRetries, _countTokens, _estimateCost };
+module.exports = { LLMProvider, FallbackProvider, AnthropicProvider, OpenAIProvider, GoogleProvider, OpenRouterProvider, CustomProvider, createProvider, detectAvailableProviders, fetchWithTimeout, configureRetries, validateProviderModel, _countTokens, _estimateCost };
 

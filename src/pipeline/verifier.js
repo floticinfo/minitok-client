@@ -37,7 +37,7 @@ async function verify(provider, task, changesResult, repoRoot, options = {}) {
   ];
 
   const result = await provider.complete(messages, {
-    model: options.model,
+    ...options,
     max_tokens: 4096,
     temperature: 0.1,
   });

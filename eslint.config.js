@@ -20,6 +20,7 @@ const commonGlobals = {
   setInterval: "readonly",
   clearInterval: "readonly",
   queueMicrotask: "readonly",
+  setImmediate: "readonly",
   require: "readonly",
   module: "writable",
   exports: "writable",

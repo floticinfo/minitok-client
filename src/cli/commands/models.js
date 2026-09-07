@@ -8,13 +8,14 @@ function register(program) {
   program
     .command("models [provider]")
     .description("List available LLM models (anthropic, openai, google, openrouter, or custom)")
-    .option("--discover", "Fetch live model list from provider APIs (requires API keys)")
+    .option("--discover", "Fetch live model list from provider APIs (requires API keys)").option("--json", "output JSON")
     .action(async (provider, opts) => {
       try {
         const config = loadConfig();
         const available = await detectAvailableProviders(config);
 
         if (opts.discover) {
+          if (opts.json) { const discovered = await discoverModels(config.providers || {}); console.log(JSON.stringify({ available, ...discovered })); return; }
           console.log("🔍 Discovering models from provider APIs...\n");
           const result = await discoverModels(config.providers || {});
 
@@ -62,6 +63,7 @@ function register(program) {
             console.log("   These will work but lack metadata (context window, reasoning info).\n");
           }
         } else {
+          if (opts.json) { console.log(JSON.stringify({ available, models: listModels(provider) })); return; }
           // Offline catalog display
           const models = listModels(provider);
           const grouped = {};

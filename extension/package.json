@@ -1,0 +1,127 @@
+{
+  "name": "minitok-extension",
+  "displayName": "minitok",
+  "description": "Run repository-aware coding workflows with minitok.",
+  "publisher": "flotic",
+  "version": "0.1.4",
+  "minitok": {
+    "cliPackage": "@flotic/minitok",
+    "cliVersion": "1.3.4"
+  },
+  "author": "Flotic",
+  "license": "SEE LICENSE IN LICENSE",
+  "icon": "media/minitok.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/floticinfo/minitok-client"
+  },
+  "bugs": {
+    "url": "https://github.com/floticinfo/minitok-client/issues"
+  },
+  "homepage": "https://minitok.dev/docs",
+  "engines": {
+    "vscode": ">=1.90.0"
+  },
+  "extensionKind": ["workspace"],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "minitok runs repository-changing commands and requires a trusted workspace."
+    }
+  },
+  "categories": [
+    "AI",
+    "Other"
+  ],
+  "keywords": [
+    "minitok",
+    "AI",
+    "coding agent",
+    "MCP",
+    "code review"
+  ],
+    "activationEvents": [
+    "onCommand:minitok.run",
+    "onCommand:minitok.status",
+    "onCommand:minitok.openPanel",
+    "onCommand:minitok.openSettings",
+    "onCommand:minitok.mcpStatus",
+    "onView:minitok.sidebar"
+  ],
+  "main": "./dist/src/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [{ "id": "minitok", "title": "minitok", "icon": "media/minitok.svg" }]
+    },
+    "views": {
+      "minitok": [{ "type": "webview", "id": "minitok.sidebar", "name": "" }]
+    },
+    "commands": [
+      {
+        "command": "minitok.run",
+        "title": "minitok: Run Task"
+      },
+      {
+        "command": "minitok.status",
+        "title": "minitok: Status"
+      },
+      {
+        "command": "minitok.openPanel",
+        "title": "minitok: Open Task Panel"
+      },
+      {
+        "command": "minitok.openSettings",
+        "title": "minitok: Open Settings"
+      },
+      {
+        "command": "minitok.mcpStatus",
+        "title": "minitok: MCP Status"
+      }
+    ],
+    "configuration": {
+      "title": "minitok",
+      "properties": {
+        "minitok.cliPath": {
+          "type": "string",
+          "default": "",
+          "description": "Optional path to the Node.js minitok CLI. Leave empty to auto-detect minitok.cmd/minitok; Python minitok executables are not supported."
+        },
+        "minitok.mcpCommand": {
+          "type": ["string", "array"],
+          "items": { "type": "string" },
+          "default": "",
+          "description": "Command used to connect the minitok MCP runtime. Use an argument array or quote paths containing spaces."
+        },
+        "minitok.showCost": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show token and estimated cost summaries in the sidebar"
+        },
+        "minitok.evidencePath": {
+          "type": "string",
+          "default": ".minitok/evidence/runs/latest.json",
+          "description": "Workspace-relative evidence file opened by the sidebar"
+        },
+        "minitok.autoApprove": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically approve minitok changes. Disabled by default for safety."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "package": "vsce package",
+    "compile": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "test:host": "npm run compile && node dist/test/run-host.js",
+    "test": "npm run compile && node --test test/process-contract.test.js test/mcp-config.test.js && node dist/test/run-host.js"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.1",
+    "@types/vscode": "^1.90.0",
+    "@vscode/test-electron": "^3.1.0",
+    "@vscode/vsce": "^3.2.2",
+    "typescript": "^5.7.2"
+  }
+}
