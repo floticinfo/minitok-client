@@ -3,25 +3,25 @@
   "release": {
     "package": "@flotic/minitok",
     "version": "1.3.5",
-    "commit": "9c44ba37cbd797c0369f3af0eada6251a4ab3ab6",
-    "tree": "e6390ea75e252f6eddeab4a223591110c938ac47",
+    "commit": "f350cb59ad674fb20c03a1ee653acc8d342f8eb5",
+    "tree": "66cfd69dd23b9b4af4329930a60fc4daad9dca6f",
     "tag": "v1.3.5",
     "changelog": "## 1.3.5",
     "artifact": {
       "filename": "flotic-minitok-1.3.5.tgz",
-      "size": 138446,
-      "sha256": "7618e10df7e6ff66c3241410dedac033b5948001a7dbb9c96d8c2f1f5c7e9a53",
-      "integrity": "sha512-23KymMDY6O4rxn0xvwc3ndLiz29Aa0vQVtT7cp6R7ZT22zCVm3CpfRPuZkNMhDSgBwM4kzTtL887B2ARKGoAlw==",
+      "size": 142474,
+      "sha256": "9d55ef1a5f9b8eb94212786e8e9edbe190d3f728d65be04f0ffff1cf4e9eb6c4",
+      "integrity": "sha512-X4ytkVQm7Olg6ZZcOFisN0AoZ8dTyC+dz8VUouJyw1PHmFRX19i5iD6AGDn7ag3jUe6GI7k7HvSfFli/kZT2JQ==",
       "files": [
         {
           "path": "CHANGELOG.md",
-          "size": 6523,
-          "sha256": "44002bdec180759b0b6149295cde167998a32707a5a05dbdc90f913098c4f2f9"
+          "size": 6718,
+          "sha256": "a2cc98ac4440f2e744543cd85cb42639459f56f9f7aab73a1787aa60cda880d9"
         },
         {
           "path": "COMMERCIAL_READINESS.md",
-          "size": 3866,
-          "sha256": "1157c2e3d904d9ab3bb99aa774e1c1aadeae46aaadf2a92c1aea3dca0d789c5b"
+          "size": 4213,
+          "sha256": "71a911456ce139b8595adce79f08c753a4423dae37518457f53f06dbc746d05b"
         },
         {
           "path": "DATA_CLASSIFICATION.md",
@@ -40,23 +40,23 @@
         },
         {
           "path": "POLICY.md",
-          "size": 6397,
-          "sha256": "eb2e5d87db92f0f1fce8deb3865b19fe4919eec920de8536b88c45a50e335719"
+          "size": 6478,
+          "sha256": "b7698cf290b6d5ab86ef3fafd39a19dc5e8413087e04f2bbff0b2a79e7ba5c0b"
         },
         {
           "path": "README.md",
-          "size": 17339,
-          "sha256": "8870ce2f8773d78bd849819a11ab2806e81ff3d5b1b43df906d77365f160db98"
+          "size": 18752,
+          "sha256": "1e3835dbf39b69992d5a67fc05aa9f636c26d5aeb6763ca99f5bf8b7d04f164f"
         },
         {
           "path": "bin/minitok.js",
-          "size": 6093,
-          "sha256": "9be82b25f51cc624fb897cfd21c6ef7496a157d728ca68e67989558a19448f31"
+          "size": 6078,
+          "sha256": "c1b202fd688d9448b27647ad4e397cbd9c72a5d7b50c62b29217108317ab8c3e"
         },
         {
           "path": "package.json",
-          "size": 3715,
-          "sha256": "97081cef6459d5a84e524ebfd00271662d0c2432c2ce06b5e7402240d74b865f"
+          "size": 3927,
+          "sha256": "11e0ced72c7994ad3ee2c9e2e6edd39b6f8dbf9c7a828ef51c0a7ce5e06f4ea2"
         },
         {
           "path": "src/auth/customer-token.js",
@@ -105,8 +105,8 @@
         },
         {
           "path": "src/cli/commands/checkout.js",
-          "size": 1601,
-          "sha256": "353354b085ad45082a3fe6652454998ea4ce872b4488373c657fdbe1d3eccb47"
+          "size": 1710,
+          "sha256": "757f2ed1289e41c8336ea5f4ff6de62db55acdddeb368fb9bad84be4a1949d5e"
         },
         {
           "path": "src/cli/commands/doctor.js",
@@ -130,8 +130,8 @@
         },
         {
           "path": "src/cli/commands/mcp.js",
-          "size": 10393,
-          "sha256": "b019660c1ff2f2fac7e11f84cb0e3931f2ad669fbd1cf30e3dbbefc2fa1acf54"
+          "size": 11282,
+          "sha256": "0901d4436964b552c814c6a93d68a868ea7ef62c60496fca7200093b5170990a"
         },
         {
           "path": "src/cli/commands/migrate.js",
@@ -255,8 +255,8 @@
         },
         {
           "path": "src/entitlement/model.js",
-          "size": 6441,
-          "sha256": "b5f5b891e5c0886cf5aa4491990831844627558c15cd53addacb46752637d72a"
+          "size": 6399,
+          "sha256": "c0407040270c18f87f79fb07cf4dd537f2702729da9ff13238b26c1129c60f3d"
         },
         {
           "path": "src/entitlement/online.js",
@@ -275,8 +275,8 @@
         },
         {
           "path": "src/entitlement/public-key.js",
-          "size": 3502,
-          "sha256": "eddc2cbb4bfe1b9b9dd4204f334609de40f5093713f2faae1754d115c9ece1b4"
+          "size": 3668,
+          "sha256": "1f5052a5de285358f7583c3e5b85b14e37d35a55eedfc7cd234bbbdaeaaccaef"
         },
         {
           "path": "src/entitlement/store.js",
@@ -330,13 +330,13 @@
         },
         {
           "path": "src/evolution/telemetry-policy.js",
-          "size": 1025,
-          "sha256": "35e144f3fc64dba487546207f33d1c97d7ead80f5a2dd56529f3850582ee7bcf"
+          "size": 1341,
+          "sha256": "0591f501ebdeb43e7cc130c9fed69afd7055caf20799e9e23c36e558c03635a4"
         },
         {
           "path": "src/evolution/upload.js",
-          "size": 3775,
-          "sha256": "fd148f970be42d2d887323bc99537684a3f43e695ab2bdfc23680eff87721750"
+          "size": 4018,
+          "sha256": "442fff2dd8002303fcfb52fc06108eae7f40db690882d40da5f81dcb5bab61fa"
         },
         {
           "path": "src/git/operations.js",
@@ -359,9 +359,19 @@
           "sha256": "b65f1529ceb55b624e89bdaf514eeabc23a9e007cb1b9f4a82e191118b3ae2cf"
         },
         {
+          "path": "src/mcp/remote.js",
+          "size": 5323,
+          "sha256": "dfe57f0b202839d1043434aa5bbca017861f8adb332e3f98dfca0934bf7d57d6"
+        },
+        {
+          "path": "src/mcp/runtime-token.js",
+          "size": 3974,
+          "sha256": "ff1d9e38f7e50104e849e7f4bf88d0e1b0c60433d2f3d946144047f2c49d1bc3"
+        },
+        {
           "path": "src/mcp/tools.js",
-          "size": 15974,
-          "sha256": "71cdb06d76cc7e84b4020b2d47da1967cbde8bf2242b761506513c6e4e2cc384"
+          "size": 16015,
+          "sha256": "054d5a37f9f1744253ed78a19dc70dc4998ba4b523147e1626df433778ac4d55"
         },
         {
           "path": "src/pipeline/check.js",
@@ -385,8 +395,8 @@
         },
         {
           "path": "src/pipeline/loop.js",
-          "size": 36627,
-          "sha256": "cdc26eb3bccb0f6133b42a4717c52a3883e102f6d3aa236efe563c3c6d217a68"
+          "size": 36619,
+          "sha256": "bd195a898d89b685db81254fa2e6cf70467c14e941258976c16e3c1506fb7ab2"
         },
         {
           "path": "src/pipeline/next_task.js",
@@ -470,8 +480,8 @@
         },
         {
           "path": "src/runtime/server.js",
-          "size": 14796,
-          "sha256": "a0c009f744ef8ded5e95257338e1f3b62073817efd3f360db72d4510c2d7fa25"
+          "size": 15261,
+          "sha256": "36c9f3c6aad29aa52716359e4144fa40fd147d3e9257439082ac7b47667a6afa"
         },
         {
           "path": "src/runtime/sessions.js",
@@ -485,8 +495,8 @@
         },
         {
           "path": "src/runtime/stdio.js",
-          "size": 17964,
-          "sha256": "4d43d662b00180ba3a2ca5b4ff72498c9dc3f534f4eacdba84152d800039c665"
+          "size": 20470,
+          "sha256": "0444c0708ba4eba61bafeaf7475132c519a50f6597ad293f9feaa4e73e1fa804"
         },
         {
           "path": "src/runtime/workspace.js",
