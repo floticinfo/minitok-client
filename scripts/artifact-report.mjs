@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { createRequire } from "node:module";
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
@@ -8,9 +9,25 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const extensionRoot = path.join(root, "extension");
 const runtimeRoot = path.join(extensionRoot, "runtime");
 const artifactsRoot = path.join(extensionRoot, "artifacts");
+const JSZip = createRequire(path.join(extensionRoot, "package.json"))("jszip");
 const readJson = file => JSON.parse(readFileSync(file, "utf8"));
 const relative = file => path.relative(root, file).replaceAll(path.sep, "/");
 const sha256 = bytes => createHash("sha256").update(bytes).digest("hex");
+const integrity = bytes => `sha512-${createHash("sha512").update(bytes).digest("base64")}`;
+
+function inspectSourceState() {
+  try {
+    const status = execFileSync("git", ["status", "--short", "--untracked-files=all"], { cwd: root, encoding: "utf8" }).trim();
+    const commit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
+    const tags = execFileSync("git", ["tag", "--points-at", "HEAD"], { cwd: root, encoding: "utf8" }).trim().split(/\\r?\\n/).filter(Boolean);
+    const expectedTag = `v${readJson(path.join(root, "package.json")).version}`;
+    return { worktree: status ? "DIRTY" : "CLEAN", commit, tag: tags.includes(expectedTag) ? "PRESENT_AT_HEAD" : "ABSENT_AT_HEAD", expectedTag, changedFiles: status ? status.split(/\\r?\\n/) : [], provenance: "local git worktree" };
+  } catch (error) {
+    return { worktree: "UNKNOWN", tag: "UNKNOWN", provenance: "local git worktree", error: error.message };
+  }
+}
+
+const externalStates = { publication: "UNVERIFIED", production: "UNVERIFIED", approval: "NOT_GRANTED" };
 
 function filesUnder(directory) {
   if (!existsSync(directory)) return [];
@@ -43,7 +60,7 @@ function extensionCandidates() {
 export function inspectCliDryRun() {
   const packageJson = readJson(path.join(root, "package.json"));
   const artifact = parseNpmJson(npmCommand(["pack", "--dry-run", "--json"]));
-  return { program: "cli-npm-package", status: "generated", verificationStatus: "unverified", source: "git worktree", manifest: { name: packageJson.name, version: packageJson.version, main: packageJson.main, bin: packageJson.bin, engines: packageJson.engines, files: packageJson.files }, dryRun: { filename: artifact.filename, size: artifact.size, unpackedSize: artifact.unpackedSize, shasum: artifact.shasum || null, integrity: artifact.integrity || null, files: (artifact.files || []).map(file => file.path).sort() } };
+  return { program: "cli-npm-package", status: "GENERATED", verificationStatus: "LOCAL_ONLY", source: "git worktree", manifest: { name: packageJson.name, version: packageJson.version, main: packageJson.main, bin: packageJson.bin, engines: packageJson.engines, files: packageJson.files }, dryRun: { filename: artifact.filename, size: artifact.size, unpackedSize: artifact.unpackedSize, shasum: artifact.shasum || null, integrity: artifact.integrity || null, tarballHash: artifact.shasum || null, tarballIntegrity: artifact.integrity || null, files: (artifact.files || []).map(file => file.path).sort() }, external: { ...externalStates } };
 }
 
 export function inspectRuntime() {
@@ -64,19 +81,43 @@ export function inspectHttpContract() {
   return { program: "mcp-localhost-http-contract", status: "generated", verificationStatus: "unverified", source: "git worktree", manifest: { name: packageJson.name, version: packageJson.version }, contract: { host, endpoint: "POST /mcp", protocolVersion: protocol, authentication: "Bearer runtime token", health: "GET /health", remoteHttp: false, contentType: "application/json", unauthorizedStatus: 401, notificationStatus: 202 }, sources: ["src/runtime/server.js", "src/runtime/stdio.js"] };
 }
 
-export function inspectExtensionArtifacts() {
+export async function inspectExtensionArtifacts() {
   const packageJson = readJson(path.join(extensionRoot, "package.json"));
+  const runtimeJson = readJson(path.join(runtimeRoot, "package.json"));
+  const cliJson = readJson(path.join(root, "package.json"));
   const canonical = `minitok-extension-${packageJson.version}.vsix`;
   const candidates = extensionCandidates().map(file => ({ path: relative(file), status: path.basename(file) === canonical && path.dirname(file) === artifactsRoot ? "generated" : "stale", size: statSync(file).size, sha256: sha256(readFileSync(file)) }));
   const authoritative = candidates.find(candidate => candidate.path === `extension/artifacts/${canonical}`);
-  const status = authoritative ? "generated" : "missing";
-  return { program: "vscode-extension-vsix", status, verificationStatus: "unverified", staleReportStatus: "stale", missingStatus: "missing", staleStatus: "stale", authoritative: `extension/artifacts/${canonical}`, candidates, manifest: { name: packageJson.name, displayName: packageJson.displayName, version: packageJson.version, publisher: packageJson.publisher, engines: packageJson.engines } };
+  let embedded;
+  let manifestMatches = false;
+  if (authoritative) {
+    const archive = await JSZip.loadAsync(readFileSync(path.join(root, authoritative.path)));
+    const extensionEntry = archive.file("extension/package.json");
+    const runtimeEntry = archive.file("extension/runtime/package.json");
+    if (extensionEntry && runtimeEntry) {
+      const extensionManifest = JSON.parse(await extensionEntry.async("string"));
+      const runtimeManifest = JSON.parse(await runtimeEntry.async("string"));
+      embedded = { extension: { name: extensionManifest.name, version: extensionManifest.version, publisher: extensionManifest.publisher, cliPackage: extensionManifest.minitok?.cliPackage, cliVersion: extensionManifest.minitok?.cliVersion }, runtime: { name: runtimeManifest.name, version: runtimeManifest.version } };
+      manifestMatches = extensionManifest.name === packageJson.name && extensionManifest.version === packageJson.version && extensionManifest.publisher === packageJson.publisher && extensionManifest.minitok?.cliPackage === cliJson.name && extensionManifest.minitok?.cliVersion === cliJson.version && runtimeManifest.name === runtimeJson.name && runtimeManifest.version === runtimeJson.version;
+    }
+  }
+  const status = authoritative && manifestMatches ? "generated" : authoritative ? "stale" : "missing";
+  const authoritativeEvidence = authoritative ? { path: authoritative.path, sha256: authoritative.sha256, size: authoritative.size } : { path: `extension/artifacts/${canonical}`, sha256: null, size: null };
+  return { program: "vscode-extension-vsix", status, verificationStatus: "LOCAL_ONLY", source: "git worktree", staleReportStatus: "stale", missingStatus: "missing", staleStatus: "stale", authoritative: authoritativeEvidence, candidates, manifest: { name: packageJson.name, displayName: packageJson.displayName, version: packageJson.version, publisher: packageJson.publisher, engines: packageJson.engines }, embedded, manifestMatches, compatibility: { cli: `${cliJson.name}@${cliJson.version}`, runtime: `${runtimeJson.name}@${runtimeJson.version}`, extension: `${packageJson.name}@${packageJson.version}`, extensionCliMatches: embedded?.extension?.cliPackage === cliJson.name && embedded?.extension?.cliVersion === cliJson.version, embeddedRuntimeMatches: embedded?.runtime?.name === runtimeJson.name && embedded?.runtime?.version === runtimeJson.version }, external: { ...externalStates } };
 }
 
-export function inspectExtensionArtifact(artifact) {
+export async function inspectExtensionArtifact(artifact) {
   const packageJson = readJson(path.join(extensionRoot, "package.json"));
+  const runtimeJson = readJson(path.join(runtimeRoot, "package.json"));
   const bytes = readFileSync(artifact);
-  return { program: "vscode-extension-vsix", status: "generated", verificationStatus: "unverified", source: "git worktree", manifest: { name: packageJson.name, displayName: packageJson.displayName, version: packageJson.version, publisher: packageJson.publisher, engines: packageJson.engines }, artifact: { path: relative(artifact), sha256: sha256(bytes), size: bytes.length } };
+  const archive = await JSZip.loadAsync(bytes);
+  const extensionEntry = archive.file("extension/package.json");
+  const runtimeEntry = archive.file("extension/runtime/package.json");
+  if (!extensionEntry || !runtimeEntry) throw new Error("authoritative VSIX is missing embedded release manifests");
+  const embeddedExtension = JSON.parse(await extensionEntry.async("string"));
+  const embeddedRuntime = JSON.parse(await runtimeEntry.async("string"));
+  const manifestMatches = embeddedExtension.name === packageJson.name && embeddedExtension.version === packageJson.version && embeddedExtension.publisher === packageJson.publisher && embeddedExtension.minitok?.cliPackage === readJson(path.join(root, "package.json")).name && embeddedExtension.minitok?.cliVersion === readJson(path.join(root, "package.json")).version && embeddedRuntime.name === runtimeJson.name && embeddedRuntime.version === runtimeJson.version;
+  return { program: "vscode-extension-vsix", status: manifestMatches ? "generated" : "stale", verificationStatus: "local-only", source: "git worktree", manifest: { name: packageJson.name, displayName: packageJson.displayName, version: packageJson.version, publisher: packageJson.publisher, engines: packageJson.engines }, embedded: { extension: { name: embeddedExtension.name, version: embeddedExtension.version, publisher: embeddedExtension.publisher, cliPackage: embeddedExtension.minitok?.cliPackage, cliVersion: embeddedExtension.minitok?.cliVersion }, runtime: { name: embeddedRuntime.name, version: embeddedRuntime.version } }, artifact: { path: relative(artifact), sha256: sha256(bytes), size: bytes.length }, manifestMatches };
 }
 
 if (path.resolve(process.argv[1] || "") === path.resolve(fileURLToPath(import.meta.url))) {
@@ -84,7 +125,7 @@ if (path.resolve(process.argv[1] || "") === path.resolve(fileURLToPath(import.me
   if (mode === "cli") console.log(JSON.stringify(inspectCliDryRun()));
   else if (mode === "runtime") console.log(JSON.stringify(inspectRuntime()));
   else if (mode === "http") console.log(JSON.stringify(inspectHttpContract()));
-  else if (mode === "extension") console.log(JSON.stringify(inspectExtensionArtifacts()));
-  else if (mode === "report") console.log(JSON.stringify({ status: "unverified", artifacts: [inspectCliDryRun(), inspectExtensionArtifacts(), inspectRuntime(), inspectHttpContract()] }));
+  else if (mode === "extension") console.log(JSON.stringify(await inspectExtensionArtifacts()));
+  else if (mode === "report") console.log(JSON.stringify({ schemaVersion: 1, status: "LOCAL_ONLY", source: inspectSourceState(), external: { ...externalStates }, artifacts: [inspectCliDryRun(), await inspectExtensionArtifacts(), inspectRuntime(), inspectHttpContract()] }));
   else throw new Error("usage: node scripts/artifact-report.mjs report|cli|runtime|http|extension");
 }

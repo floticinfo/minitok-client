@@ -1,53 +1,72 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "release": {
-    "package": "",
-    "version": ""
+    "package": "REPLACE_WITH_PACKAGE_NAME",
+    "version": "REPLACE_WITH_PACKAGE_VERSION",
+    "artifacts": {
+      "cli": { "version": "REPLACE_WITH_PACKAGE_VERSION", "sha256": "REPLACE_WITH_SHA256" },
+      "vsix": { "version": "REPLACE_WITH_EXTENSION_VERSION", "sha256": "REPLACE_WITH_SHA256" }
+    }
   },
   "approvals": {
     "legal-owner-approval": {
-      "status": "",
-      "owner": "",
-      "decision": "",
-      "evidenceRef": { "type": "external", "reference": "PENDING_OPERATOR_EVIDENCE" },
-      "approvedAt": ""
+      "status": "PENDING_OPERATOR_APPROVAL",
+      "owner": "REPLACE_WITH_LEGAL_APPROVER",
+      "decision": "REPLACE_WITH_LEGAL_DECISION",
+      "evidenceRef": { "type": "external", "reference": "REPLACE_WITH_REVIEW_RECORD" },
+      "approvedAt": "REPLACE_WITH_ISO_TIMESTAMP"
     },
     "privacy-owner-approval": {
-      "status": "",
-      "owner": "",
-      "decision": "",
-      "evidenceRef": { "type": "external", "reference": "PENDING_OPERATOR_EVIDENCE" },
-      "approvedAt": ""
+      "status": "PENDING_OPERATOR_APPROVAL",
+      "owner": "REPLACE_WITH_PRIVACY_APPROVER",
+      "decision": "REPLACE_WITH_PRIVACY_DECISION",
+      "evidenceRef": { "type": "external", "reference": "REPLACE_WITH_REVIEW_RECORD" },
+      "approvedAt": "REPLACE_WITH_ISO_TIMESTAMP"
     },
     "support-commitments": {
-      "status": "",
-      "owner": "",
-      "decision": "",
-      "evidenceRef": { "type": "external", "reference": "PENDING_OPERATOR_EVIDENCE" },
-      "approvedAt": "",
-      "support": { "contactOwner": "", "escalationOwner": "" }
+      "status": "PENDING_OPERATOR_APPROVAL",
+      "owner": "REPLACE_WITH_SUPPORT_OWNER",
+      "decision": "REPLACE_WITH_SUPPORT_DECISION",
+      "evidenceRef": { "type": "external", "reference": "REPLACE_WITH_SUPPORT_RECORD" },
+      "approvedAt": "REPLACE_WITH_ISO_TIMESTAMP",
+      "support": { "contactOwner": "REPLACE_WITH_CONTACT_OWNER", "sla": "REPLACE_WITH_SLA", "escalationOwner": "REPLACE_WITH_ESCALATION_OWNER" }
     },
-    "publication-authorization": {
-      "status": "",
-      "owner": "",
-      "decision": "",
-      "evidenceRef": { "type": "external", "reference": "PENDING_OPERATOR_EVIDENCE" },
-      "approvedAt": ""
+    "npm-publication-authorization": {
+      "status": "PENDING_OPERATOR_APPROVAL",
+      "owner": "REPLACE_WITH_NPM_AUTHORIZER",
+      "decision": "REPLACE_WITH_NPM_PUBLICATION_DECISION",
+      "evidenceRef": { "type": "external", "reference": "REPLACE_WITH_NPM_AUTHORIZATION_RECORD" },
+      "approvedAt": "REPLACE_WITH_ISO_TIMESTAMP",
+      "npmPublication": { "package": "@flotic/minitok", "version": "REPLACE_WITH_PACKAGE_VERSION", "registry": "https://registry.npmjs.org/" }
+    },
+    "marketplace-publisher-authorization": {
+      "status": "PENDING_OPERATOR_APPROVAL",
+      "owner": "REPLACE_WITH_MARKETPLACE_AUTHORIZER",
+      "decision": "REPLACE_WITH_MARKETPLACE_PUBLICATION_DECISION",
+      "evidenceRef": { "type": "external", "reference": "REPLACE_WITH_MARKETPLACE_AUTHORIZATION_RECORD" },
+      "approvedAt": "REPLACE_WITH_ISO_TIMESTAMP",
+      "marketplacePublication": { "publisher": "flotic", "extension": "minitok-extension", "version": "REPLACE_WITH_EXTENSION_VERSION" }
     },
     "registry-publication-verification": {
-      "status": "",
-      "owner": "",
-      "decision": "",
-      "evidenceRef": { "type": "external", "reference": "PENDING_OPERATOR_EVIDENCE" },
-      "approvedAt": ""
+      "status": "PENDING_OPERATOR_APPROVAL",
+      "owner": "REPLACE_WITH_REGISTRY_VERIFIER",
+      "decision": "REPLACE_WITH_REGISTRY_FINDING",
+      "evidenceRef": { "type": "external", "reference": "REPLACE_WITH_READ_ONLY_REGISTRY_RECORD" },
+      "approvedAt": "REPLACE_WITH_ISO_TIMESTAMP"
     },
     "production-operations": {
-      "status": "",
-      "owner": "",
-      "decision": "",
-      "evidenceRef": { "type": "external", "reference": "PENDING_OPERATOR_EVIDENCE" },
-      "approvedAt": "",
-      "productionOperations": { "rollbackOwner": "", "monitoringOwner": "" }
+      "status": "PENDING_OPERATOR_APPROVAL",
+      "owner": "REPLACE_WITH_OPERATIONS_APPROVER",
+      "decision": "REPLACE_WITH_OPERATIONS_DECISION",
+      "evidenceRef": { "type": "external", "reference": "REPLACE_WITH_OPERATIONS_RECORD" },
+      "approvedAt": "REPLACE_WITH_ISO_TIMESTAMP",
+      "productionOperations": {
+        "deploymentOwner": "REPLACE_WITH_DEPLOYMENT_OWNER",
+        "databaseOwner": "REPLACE_WITH_DATABASE_OWNER",
+        "rollbackOwner": "REPLACE_WITH_ROLLBACK_OWNER",
+        "monitoringOwner": "REPLACE_WITH_MONITORING_OWNER",
+        "signerOwner": "REPLACE_WITH_PRODUCTION_SIGNER_OWNER"
+      }
     }
   }
 }

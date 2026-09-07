@@ -38,13 +38,13 @@ function run(args) {
   return { ...result, output: `${result.stdout || ""}${result.stderr || ""}` };
 }
 
-export function extensionReadiness() {
+export async function extensionReadiness() {
   const results = [];
-  const artifact = inspectExtensionArtifacts();
+  const artifact = await inspectExtensionArtifacts();
   const runtime = fs.existsSync(path.join(root, "extension", "dist", "src", "extension.js"));
   results.push(local(runtime, "extension install artifact", "manifest and compiled runtime are present"));
   results.push(local(extensionPackage.main === "./dist/src/extension.js" && /^\d+\.\d+\.\d+$/.test(extensionPackage.version) && extensionPackage.minitok?.cliPackage === packageJson.name && extensionPackage.minitok?.cliVersion === packageJson.version, "extension runtime and version", `${extensionPackage.main} version ${extensionPackage.version}; CLI ${extensionPackage.minitok?.cliPackage}@${extensionPackage.minitok?.cliVersion}`));
-  results.push(local(artifact.status === "generated" && artifact.authoritative === `extension/artifacts/minitok-extension-${extensionPackage.version}.vsix`, "extension packaged VSIX", `${artifact.authoritative} is the versioned local artifact`));
+  results.push(local(artifact.status === "generated" && artifact.authoritative?.path === `extension/artifacts/minitok-extension-${extensionPackage.version}.vsix`, "extension packaged VSIX", `${artifact.authoritative?.path} is the versioned local artifact`));
   results.push(local(artifact.manifest.name === extensionPackage.name && artifact.manifest.version === extensionPackage.version && artifact.manifest.publisher === extensionPackage.publisher && artifact.manifest.engines?.vscode === extensionPackage.engines?.vscode, "extension VSIX manifest consistency", "VSIX evidence uses the extension manifest identity and engine"));
   results.push(local(extensionPackage.capabilities?.untrustedWorkspaces?.supported === false && /trusted workspace/i.test(extensionPackage.capabilities?.untrustedWorkspaces?.description || ""), "extension trusted-workspace boundary", "untrusted workspaces are explicitly unsupported"));
   results.push(local(has("extension/src/extension.ts", /workspace\.isTrusted/) && has("extension/src/workspace.ts", /Trust this workspace before running minitok/), "extension runtime trust enforcement", "run command refuses untrusted workspaces"));
@@ -93,19 +93,19 @@ export function mcpReadiness() {
   return results;
 }
 
-export function readiness(target = "all") {
-  const groups = target === "extension" ? { extension: extensionReadiness() } : target === "cli" ? { cli: cliReadiness() } : target === "mcp" ? { mcp: mcpReadiness() } : { extension: extensionReadiness(), cli: cliReadiness(), mcp: mcpReadiness() };
+export async function readiness(target = "all") {
+  const groups = target === "extension" ? { extension: await extensionReadiness() } : target === "cli" ? { cli: cliReadiness() } : target === "mcp" ? { mcp: mcpReadiness() } : { extension: await extensionReadiness(), cli: cliReadiness(), mcp: mcpReadiness() };
   return groups;
 }
 
-function main() {
+async function main() {
   const targetIndex = process.argv.indexOf("--target");
   const target = targetIndex >= 0 ? process.argv[targetIndex + 1] : "all";
   if (!["all", "extension", "cli", "mcp"].includes(target)) {
     console.error("Usage: node scripts/readiness-checks.mjs [--target extension|cli|mcp|all] [--json]");
     process.exit(1);
   }
-  const report = readiness(target);
+  const report = await readiness(target);
   const checks = Object.values(report).flat();
   if (process.argv.includes("--json")) console.log(JSON.stringify(report, null, 2));
   else {

@@ -6,13 +6,15 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const manifestEnvironmentVariable = "MINITOK_COMMERCIAL_APPROVAL_MANIFEST";
 const packageData = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
 const requiredApprovalFields = ["status", "owner", "decision", "evidenceRef", "approvedAt"];
+const placeholderPattern = /(?:PENDING|TODO|TBD|CHANGE_ME|REPLACE_ME|PLACEHOLDER|UNVERIFIED|NOT_GRANTED|<[^>]+>)/i;
 const requirements = [
   { id: "legal-owner-approval", status: "BLOCKED", files: ["EULA.md"], markers: [/TODO: Legal owner must approve/i] },
   { id: "privacy-owner-approval", status: "BLOCKED", files: ["POLICY.md"], markers: [/Legal review is required before publication/i, /TODO: Legal owner must approve/i] },
-  { id: "support-commitments", status: "UNVERIFIED", files: ["EULA.md", "README.md"], markers: [/Support is provided according to the plan or purchase terms/i, /support commitments?/i], structured: "support" },
-  { id: "publication-authorization", status: "UNVERIFIED", files: ["README.md"], markers: [/npm tarball includes/i, /Package:/i] },
+  { id: "support-commitments", status: "UNVERIFIED", files: ["EULA.md", "README.md"], markers: [/Support is provided according to the plan or purchase terms/i, /support commitments?/i], structured: "support", fields: ["contactOwner", "sla", "escalationOwner"] },
+  { id: "npm-publication-authorization", status: "UNVERIFIED", files: ["README.md"], markers: [/npm tarball includes/i, /Package:/i], structured: "npmPublication" },
+  { id: "marketplace-publisher-authorization", status: "UNVERIFIED", files: ["README.md"], markers: [/Package:/i], structured: "marketplacePublication" },
   { id: "registry-publication-verification", status: "UNVERIFIED", files: ["README.md"], markers: [/npm tarball includes/i, /Package:/i] },
-  { id: "production-operations", status: "UNVERIFIED", files: ["POLICY.md", "README.md"], markers: [/TODO: Operator must confirm/i, /production.*not verified/i], structured: "productionOperations" },
+  { id: "production-operations", status: "UNVERIFIED", files: ["POLICY.md", "README.md"], markers: [/TODO: Operator must confirm/i, /production.*not verified/i], structured: "productionOperations", fields: ["deploymentOwner", "databaseOwner", "rollbackOwner", "monitoringOwner", "signerOwner"] },
 ];
 
 export function detectApprovalMarkers(text, markers) {
@@ -25,10 +27,14 @@ function validTimestamp(value, now) {
   return Number.isFinite(timestamp) && timestamp <= now;
 }
 
+function containsPlaceholder(value) {
+  return typeof value === "string" && placeholderPattern.test(value);
+}
+
 function validateEvidenceRef(value, baseDir) {
   if (!value || typeof value !== "object" || Array.isArray(value) || typeof value.type !== "string") return false;
-  if (value.type === "external") return typeof value.reference === "string" && value.reference.trim().length > 0;
-  if (value.type !== "local" || typeof value.path !== "string" || !value.path.trim()) return false;
+  if (value.type === "external") return typeof value.reference === "string" && value.reference.trim().length > 0 && !containsPlaceholder(value.reference);
+  if (value.type !== "local" || typeof value.path !== "string" || !value.path.trim() || containsPlaceholder(value.path)) return false;
   try {
     return fs.statSync(path.resolve(baseDir, value.path)).isFile();
   } catch {
@@ -43,15 +49,27 @@ function validateStructuredFields(approval, requirement, errors) {
     errors.push(`${requirement.id}.${requirement.structured} must be an object`);
     return;
   }
-  const required = requirement.structured === "support" ? ["contactOwner", "escalationOwner"] : ["rollbackOwner", "monitoringOwner"];
-  for (const field of required) if (typeof fields[field] !== "string") errors.push(`${requirement.id}.${requirement.structured}.${field} must be a string`);
+  if (requirement.structured === "support" || requirement.structured === "productionOperations") {
+    const fieldsToValidate = requirement.fields || (requirement.structured === "support" ? ["contactOwner", "escalationOwner"] : ["rollbackOwner", "monitoringOwner"]);
+    for (const field of fieldsToValidate) {
+      if (typeof fields[field] !== "string" || !fields[field].trim() || containsPlaceholder(fields[field])) errors.push(`${requirement.id}.${requirement.structured}.${field} must be a non-placeholder string`);
+    }
+  }
 }
 
 export function validateApprovalManifest(manifest, { packageData: expectedPackage = packageData, baseDir = root, now = Date.now() } = {}) {
   const errors = [];
   if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) return ["manifest must be an object"];
-  if (manifest.schemaVersion !== 1) errors.push("schemaVersion must be 1");
+  if (placeholderPattern.test(JSON.stringify(manifest))) errors.push("manifest contains unresolved placeholder values");
+  if (manifest.schemaVersion !== 2) errors.push("schemaVersion must be 2");
   if (!manifest.release || typeof manifest.release !== "object" || manifest.release.package !== expectedPackage.name || manifest.release.version !== expectedPackage.version) errors.push("manifest package/version does not match package.json");
+  if (!manifest.release?.artifacts || typeof manifest.release.artifacts !== "object") errors.push("release.artifacts must identify current local artifacts");
+  else {
+    const expectedVersions = { cli: expectedPackage.version, vsix: expectedPackage.extensionVersion || "0.1.4" };
+    for (const [id, artifact] of Object.entries(manifest.release.artifacts)) {
+      if (!artifact || typeof artifact !== "object" || artifact.version !== expectedVersions[id] || typeof artifact.sha256 !== "string" || !/^[a-f0-9]{64}$/i.test(artifact.sha256)) errors.push(`release.artifacts.${id} must contain the current local artifact version and SHA-256`);
+    }
+  }
   if (!manifest.approvals || typeof manifest.approvals !== "object" || Array.isArray(manifest.approvals)) return [...errors, "approvals must be an object"];
   for (const requirement of requirements) {
     const approval = manifest.approvals[requirement.id];
@@ -59,7 +77,7 @@ export function validateApprovalManifest(manifest, { packageData: expectedPackag
       errors.push(`${requirement.id} approval is required`);
       continue;
     }
-    for (const field of requiredApprovalFields) if (field !== "evidenceRef" && typeof approval[field] !== "string") errors.push(`${requirement.id}.${field} must be a string`);
+    for (const field of requiredApprovalFields) if (field !== "evidenceRef" && (typeof approval[field] !== "string" || !approval[field].trim() || containsPlaceholder(approval[field]))) errors.push(`${requirement.id}.${field} must be a non-placeholder string`);
     if (!validTimestamp(approval.approvedAt, now)) errors.push(`${requirement.id}.approvedAt must be a valid non-future ISO timestamp`);
     if (!validateEvidenceRef(approval.evidenceRef, baseDir)) errors.push(`${requirement.id}.evidenceRef must be a resolvable local file or external reference`);
     validateStructuredFields(approval, requirement, errors);

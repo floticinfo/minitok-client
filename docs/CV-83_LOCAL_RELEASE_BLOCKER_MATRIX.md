@@ -1,5 +1,7 @@
 # CV-83 Local Release Blocker Matrix
 
+> ARCHIVAL REPORT — captured before the current 1.3.4 technical consistency work. It is historical evidence only and does not describe the current package version or release state.
+
 ## Scope
 
 Repository: `C:\Users\J1\minitok-client-release`
