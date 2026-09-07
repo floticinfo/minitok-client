@@ -103,7 +103,7 @@ class RuntimeServer {
       const route = this._routes[routeKey];
       if (!route && routeKey !== "POST /mcp" && routeKey !== "GET /metrics") return this._sendJson(res, 404, { error: "Not found" });
       if (this._authRequired && !(["GET /health", "GET /readyz"].includes(routeKey)) && !this._isAuthorized(req)) return this._sendJson(res, 401, { error: "Unauthorized" });
-      if (this._entitlementRequired && routeKey !== "POST /mcp" && !(["GET /health", "GET /readyz", "GET /api/v1/status"].includes(routeKey))) {
+      if (this._entitlementRequired && routeKey !== "POST /mcp" && !(["GET /health", "GET /readyz", "GET /metrics", "GET /api/v1/status"].includes(routeKey))) {
         const policy = await this._services.entitlement.status();
         if (!policy?.allowed) return this._sendJson(res, 403, { error: policy?.message || "Entitlement required", state: policy?.state });
       }

@@ -67,7 +67,7 @@ describe("runtime PID cleanup", () => {
 
   it("exposes authenticated operational metrics without secrets", async () => {
     files = runtimeFiles();
-    const server = new RuntimeServer({ ...files, port: 0, entitlementRequired: false, runtimeToken: "metrics-secret" });
+    const server = new RuntimeServer({ ...files, port: 0, entitlementRequired: true, runtimeToken: "metrics-secret" });
     await server.start();
     try {
       const unauthorized = await request(server._port, { path: "/metrics" });
@@ -77,7 +77,7 @@ describe("runtime PID cleanup", () => {
       const body = JSON.parse(authorized.body);
       assert.equal(body.ready, true);
       assert.equal(body.auth_required, true);
-      assert.equal(body.entitlement_required, false);
+      assert.equal(body.entitlement_required, true);
       assert.equal(Object.prototype.hasOwnProperty.call(body, "runtime_token"), false);
     } finally { await server.stop(); }
   });

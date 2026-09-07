@@ -11,6 +11,11 @@
   "author": "Flotic",
   "license": "SEE LICENSE IN LICENSE",
   "icon": "media/minitok.png",
+  "preview": true,
+  "galleryBanner": {
+    "color": "#013DCF",
+    "theme": "dark"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/floticinfo/minitok-client"
