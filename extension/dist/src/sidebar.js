@@ -42,6 +42,7 @@ const os = __importStar(require("node:os"));
 const node_crypto_1 = require("node:crypto");
 const workspace_1 = require("./workspace");
 const entitlement_1 = require("./entitlement");
+const device_auth_1 = require("./device-auth");
 function cliRelease(context) {
     const release = context.extension.packageJSON.minitok;
     return { packageName: typeof release?.cliPackage === "string" ? release.cliPackage : "@flotic/minitok", version: typeof release?.cliVersion === "string" ? release.cliVersion : "0.0.0" };
@@ -179,8 +180,33 @@ class minitokSidebar {
     }
     async handle(message) {
         if (message?.command === "auth-status") {
+            const session = await (0, device_auth_1.refreshExtensionSession)(this.context);
+            if (!session) {
+                this.view?.webview.postMessage({ type: "auth-state", ok: false, text: "Sign in with browser to continue." });
+                return;
+            }
             const result = await (0, entitlement_1.checkEntitlement)();
-            this.view?.webview.postMessage({ type: "auth-state", ok: result.allowed, text: result.allowed ? `Signed in with ${result.plan} plan.` : result.message });
+            this.view?.webview.postMessage({ type: "auth-state", ok: result.allowed, text: result.allowed ? `Signed in with ${result.plan} plan.` : `Entitlement error: ${result.message || "An active paid plan is required."}` });
+            return;
+        }
+        if (message?.command === "device-login") {
+            try {
+                await (0, device_auth_1.deviceLogin)(this.context, text => this.view?.webview.postMessage({ type: "auth-state", ok: false, text }));
+                const result = await (0, entitlement_1.checkEntitlement)();
+                if (!result.allowed) {
+                    this.view?.webview.postMessage({ type: "auth-state", ok: false, text: `Entitlement error: ${result.message || "An active paid plan is required."}` });
+                    return;
+                }
+                this.view?.webview.postMessage({ type: "auth-state", ok: true, text: `Signed in with ${result.plan} plan.` });
+            }
+            catch (error) {
+                this.view?.webview.postMessage({ type: "auth-state", ok: false, text: (0, device_auth_1.authErrorText)(error) });
+            }
+            return;
+        }
+        if (message?.command === "device-logout") {
+            await (0, device_auth_1.logoutExtension)(this.context);
+            this.view?.webview.postMessage({ type: "auth-state", ok: false, text: "Signed out." });
             return;
         }
         if (message?.command === "customer-login") {
@@ -197,7 +223,7 @@ class minitokSidebar {
                 return;
             }
         }
-        const commands = new Set(["show-output", "stop", "interrupt", "approve", "reject", "open-evidence", "open-diff", "restore-session", "mcp-status", "mcp-connect", "mcp-list", "history", "sessions", "info", "discover-models", "activate", "attach-file", "attach-folder", "attach-problems", "settings", "save-settings", "activate-license", "update", "run", "dry-run"]);
+        const commands = new Set(["device-login", "device-logout", "show-output", "stop", "interrupt", "approve", "reject", "open-evidence", "open-diff", "restore-session", "mcp-status", "mcp-connect", "mcp-list", "history", "sessions", "info", "discover-models", "activate", "attach-file", "attach-folder", "attach-problems", "settings", "save-settings", "activate-license", "update", "run", "dry-run"]);
         if (!message || typeof message.command !== "string" || !commands.has(message.command)) {
             this.view?.webview.postMessage({ type: "result", ok: false, text: "Unsupported command" });
             return;

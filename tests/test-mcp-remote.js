@@ -2,7 +2,7 @@
 
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const { RemoteMcpClient, validateRemoteUrl, classifyRemoteError, canFallbackToLocal, REMOTE_READ_ONLY_TOOLS } = require("../src/mcp/remote");
+const { RemoteMcpClient, validateRemoteUrl, classifyRemoteError, canFallbackToLocal, executeRemoteWithLocalFallback, REMOTE_READ_ONLY_TOOLS } = require("../src/mcp/remote");
 
 function response(status, body, headers = {}) { return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", ...headers } }); }
 
@@ -56,15 +56,25 @@ test("remote MCP classifies fallback and terminal errors", () => {
   assert.equal(classifyRemoteError({ status: 503 }), "server");
   assert.equal(classifyRemoteError({ status: 401 }), "auth");
   assert.equal(classifyRemoteError({ status: 422 }), "protocol");
+  assert.equal(classifyRemoteError({ status: 429 }), "rate_limit");
+  assert.equal(classifyRemoteError({ classification: "SESSION_REQUIRED" }), "SESSION_REQUIRED");
+  assert.equal(classifyRemoteError({ classification: "SESSION_BINDING_MISMATCH" }), "SESSION_BINDING_MISMATCH");
   assert.equal(canFallbackToLocal({ status: 503 }), true);
   assert.equal(canFallbackToLocal({ status: 401 }), false);
   assert.equal(canFallbackToLocal({ status: 422 }), false);
 });
 
-test("local MCP defaults to read permission", () => {
+test("local MCP defaults to read permission and rejects unknown scopes", () => {
   const { RuntimeStdio } = require("../src/runtime/stdio");
   const runtime = new RuntimeStdio({ authToken: "token", workspaceRoot: process.cwd() });
   assert.deepEqual([...runtime._permissions], ["read"]);
+  assert.throws(() => new RuntimeStdio({ authToken: "token", permissions: "read,admin", workspaceRoot: process.cwd() }), /Unknown local MCP scope/);
+});
+
+test("MCP fallback is explicit and transport-only", async () => {
+  assert.deepEqual(await executeRemoteWithLocalFallback({ remote: async () => "remote", local: async () => "local" }), { source: "remote", result: "remote" });
+  assert.deepEqual(await executeRemoteWithLocalFallback({ allowFallback: true, remote: async () => { throw { status: 503 }; }, local: async () => "local" }), { source: "local", result: "local" });
+  await assert.rejects(() => executeRemoteWithLocalFallback({ allowFallback: true, remote: async () => { throw { status: 403 }; }, local: async () => "local" }), error => error.status === 403);
 });
 
 test("local MCP default remains the existing stdio configuration", () => {

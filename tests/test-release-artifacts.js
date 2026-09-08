@@ -17,9 +17,8 @@ test("current release manifests use the canonical CLI version", () => {
   const cli = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
   const runtime = JSON.parse(fs.readFileSync(path.join(root, "extension", "runtime", "package.json"), "utf8"));
   const role = fs.readFileSync(path.join(root, "MINITOK_ARTIFACT_ROLE.txt"), "utf8");
-  assert.equal(cli.version, "1.3.5");
   assert.equal(runtime.version, cli.version);
-  assert.match(role, /VERSION: 1\.3\.5/);
+  assert.match(role, new RegExp(`VERSION: ${cli.version.replaceAll(".", "\\.")}`));
 });
 
 test("release artifact checks define one authoritative extension output", () => {

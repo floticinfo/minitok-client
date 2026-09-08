@@ -10,6 +10,7 @@
 const { resolveServerUrl } = require("./server-config");
 const { postJson } = require("../../core/http");
 const { loadCustomerToken } = require("../../auth/customer-token");
+const { ensureAccountSession } = require("./account");
 
 /**
  * Retrieve the activation key for the authenticated customer.
@@ -21,7 +22,8 @@ const { loadCustomerToken } = require("../../auth/customer-token");
  */
 async function cmdActivationKey(opts) {
   const serverUrl = resolveServerUrl({ cliServer: opts?.server });
-  const token = opts?.token || loadCustomerToken();
+  const account = opts?.token ? null : await ensureAccountSession({ server: opts?.server });
+  const token = opts?.token || account?.access_token || loadCustomerToken();
   if (!token) {
     console.error("Error: Authentication token required.");
     console.error("Usage: minitok activation-key --token <JWT> [--payment <dodo_payment_id>]");
@@ -66,4 +68,4 @@ function _httpPost(urlString, body, headers) {
   return postJson(urlString, body, 30000, headers);
 }
 
-module.exports = { cmdActivationKey };
+module.exports = { cmdActivationKey, _httpPost };

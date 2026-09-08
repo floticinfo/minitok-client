@@ -10,6 +10,15 @@ const os = require("os");
 const crypto = require("crypto");
 const { readRuntimeToken } = require("../mcp/runtime-token");
 const { setOwnerOnlyPermissions } = require("../utils/file-permissions");
+const LOCAL_MCP_SCOPES = new Set(["read", "write", "auto_accept"]);
+
+function parseLocalMcpScopes(value = "read") {
+  const scopes = String(value).split(",").map(item => item.trim()).filter(Boolean);
+  const normalized = scopes.length ? [...new Set(scopes)] : ["read"];
+  const unknown = normalized.find(scope => !LOCAL_MCP_SCOPES.has(scope));
+  if (unknown) throw Object.assign(new Error(`Unknown local MCP scope: ${unknown}`), { code: "INVALID_SCOPE" });
+  return normalized;
+}
 
 const SUPPORTED_PROTOCOLS = ["2024-11-05"];
 const RUN_STATE_VERSION = 2;
@@ -72,7 +81,7 @@ class RuntimeStdio {
     this._fs = options.fs || fs;
     this._workspaceRoot = options.workspaceRoot || process.cwd();
     if (options.authRequired === false || options.entitlementRequired === false) throw new Error("MCP authentication and entitlement are mandatory");
-    this._permissions = new Set(String(options.permissions || "read").split(",").map(value => value.trim()).filter(Boolean));
+    this._permissions = new Set(parseLocalMcpScopes(options.permissions || "read"));
     this._authRequired = true;
     this._entitlementRequired = true;
     this._authToken = options.authToken || process.env.MINITOK_MCP_AUTH_TOKEN || loadAuthTokenFile(options.authTokenFile || process.env.MINITOK_MCP_AUTH_TOKEN_FILE, this._fs);

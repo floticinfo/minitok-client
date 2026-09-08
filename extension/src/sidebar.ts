@@ -6,6 +6,7 @@ import * as os from "node:os";
 import { randomBytes, randomUUID } from "node:crypto";
 import { cliPath, mcpCommand, mcpEnvironment, mcpAuthToken, workspacePath, requireTrustedWorkspace, autoApprove } from "./workspace";
 import { checkEntitlement, requireEntitlement } from "./entitlement";
+import { authErrorText, deviceLogin, logoutExtension, refreshExtensionSession, readExtensionSession } from "./device-auth";
 
 function cliRelease(context: vscode.ExtensionContext) {
   const release = context.extension.packageJSON.minitok as { cliPackage?: unknown; cliVersion?: unknown } | undefined;
@@ -111,14 +112,16 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
     if (summary) this.view?.webview.postMessage({ type: "summary", cycles: summary[1], tokens: summary[2], cost: summary[3] || "0" });
   }
   private async handle(message: { command: string; task?: string; email?: string; password?: string; provider?: string; target?: string; checkpoint?: string; key?: string; settings?: Record<string, unknown>; secrets?: Record<string, string> }) {
-    if (message?.command === "auth-status") { const result = await checkEntitlement(); this.view?.webview.postMessage({ type: "auth-state", ok: result.allowed, text: result.allowed ? `Signed in with ${result.plan} plan.` : result.message }); return; }
+    if (message?.command === "auth-status") { const session = await refreshExtensionSession(this.context); if (!session) { this.view?.webview.postMessage({ type: "auth-state", ok: false, text: "Sign in with browser to continue." }); return; } const result = await checkEntitlement(); this.view?.webview.postMessage({ type: "auth-state", ok: result.allowed, text: result.allowed ? `Signed in with ${result.plan} plan.` : `Entitlement error: ${result.message || "An active paid plan is required."}` }); return; }
+    if (message?.command === "device-login") { try { await deviceLogin(this.context, text => this.view?.webview.postMessage({ type: "auth-state", ok: false, text })); const result = await checkEntitlement(); if (!result.allowed) { this.view?.webview.postMessage({ type: "auth-state", ok: false, text: `Entitlement error: ${result.message || "An active paid plan is required."}` }); return; } this.view?.webview.postMessage({ type: "auth-state", ok: true, text: `Signed in with ${result.plan} plan.` }); } catch (error) { this.view?.webview.postMessage({ type: "auth-state", ok: false, text: authErrorText(error) }); } return; }
+    if (message?.command === "device-logout") { await logoutExtension(this.context); this.view?.webview.postMessage({ type: "auth-state", ok: false, text: "Signed out." }); return; }
     if (message?.command === "customer-login") { await this.customerLogin(message.email, message.password); return; }
     const entitlementCommands = new Set(["run", "dry-run", "mcp-status", "mcp-connect", "mcp-list", "discover-models", "info", "open-evidence", "open-diff", "restore-session", "update"]);
     if (entitlementCommands.has(message?.command)) {
       try { await requireEntitlement(); }
       catch (error) { this.view?.webview.postMessage({ type: "entitlement", ok: false, text: String(error) }); return; }
     }
-    const commands = new Set(["show-output", "stop", "interrupt", "approve", "reject", "open-evidence", "open-diff", "restore-session", "mcp-status", "mcp-connect", "mcp-list", "history", "sessions", "info", "discover-models", "activate", "attach-file", "attach-folder", "attach-problems", "settings", "save-settings", "activate-license", "update", "run", "dry-run"]);
+    const commands = new Set(["device-login", "device-logout", "show-output", "stop", "interrupt", "approve", "reject", "open-evidence", "open-diff", "restore-session", "mcp-status", "mcp-connect", "mcp-list", "history", "sessions", "info", "discover-models", "activate", "attach-file", "attach-folder", "attach-problems", "settings", "save-settings", "activate-license", "update", "run", "dry-run"]);
     if (!message || typeof message.command !== "string" || !commands.has(message.command)) { this.view?.webview.postMessage({ type: "result", ok: false, text: "Unsupported command" }); return; }
     if (message.task !== undefined && (typeof message.task !== "string" || message.task.length > 20000)) { this.view?.webview.postMessage({ type: "result", ok: false, text: "Task is invalid or too long" }); return; }
     const cwd = workspacePath();

@@ -2,13 +2,11 @@
 
 const { fetchWithTimeout } = require("../core/http");
 const { loadCustomerToken } = require("../auth/customer-token");
+const REMOTE_MCP_TOOLS = Object.freeze(new Set(["minitok_status", "minitok_compact"]));
 
 const MCP_PROTOCOL_VERSION = "2024-11-05";
 const REMOTE_PATH = "/mcp";
-const REMOTE_READ_ONLY_TOOLS = Object.freeze(new Set([
-  "minitok_status",
-  "minitok_compact",
-]));
+const REMOTE_READ_ONLY_TOOLS = REMOTE_MCP_TOOLS;
 const LOCAL_ONLY_TOOLS = Object.freeze(new Set([
   "minitok_run",
   "minitok_run_cancel",
@@ -35,7 +33,10 @@ function classifyRemoteError(error) {
   if (error?.classification) return error.classification;
   if (error?.code === "INVALID_REMOTE_URL") return "configuration";
   if (error?.status >= 500) return "server";
-  if (error?.status >= 400) return error.status === 401 || error.status === 403 ? "auth" : "protocol";
+  if (error?.status >= 400) {
+    if (error.status === 429) return "rate_limit";
+    return error.status === 401 || error.status === 403 ? "auth" : "protocol";
+  }
   return "network";
 }
 
@@ -47,6 +48,7 @@ class RemoteMcpClient {
   constructor(options = {}) {
     this.url = validateRemoteUrl(options.url);
     this.token = options.token || loadCustomerToken(options.tokenFile);
+    this.accountOptions = options.accountOptions || {};
     if (!this.token) throw remoteError("Customer JWT is required for remote MCP", "auth", { code: "REMOTE_AUTH_REQUIRED" });
     this.timeoutMs = options.timeoutMs || 10000;
     this.sessionId = null;
@@ -67,10 +69,18 @@ class RemoteMcpClient {
     if (session) this.sessionId = session;
     let body;
     try { body = await response.json(); } catch { throw remoteError("Remote MCP returned invalid JSON", response.status >= 500 ? "server" : "protocol", { status: response.status }); }
-    if (response.status >= 500) throw remoteError("Remote MCP server failure", "server", { status: response.status, body });
-    if (response.status >= 400) throw remoteError(response.status === 401 || response.status === 403 ? "Remote MCP authentication or entitlement failed" : "Remote MCP HTTP protocol failure", response.status === 401 || response.status === 403 ? "auth" : "protocol", { status: response.status, body });
+    if (response.status >= 500) {
+      const errorType = body?.error?.data?.type;
+      const classification = ["RATE_LIMITED", "RATE_LIMIT_DEGRADED"].includes(errorType) ? "rate_limit" : "server";
+      throw remoteError("Remote MCP server failure", classification, { status: response.status, body, errorType: errorType || null });
+    }
+    if (response.status >= 400) {
+      const errorType = body?.error?.data?.type;
+      const classification = ["SESSION_REQUIRED", "SESSION_BINDING_MISMATCH"].includes(errorType) ? errorType : ["RATE_LIMITED", "RATE_LIMIT_DEGRADED"].includes(errorType) || response.status === 429 ? "rate_limit" : response.status === 401 || response.status === 403 ? "auth" : "protocol";
+      throw remoteError(response.status === 401 || response.status === 403 ? "Remote MCP authentication or entitlement failed" : response.status === 429 ? "Remote MCP rate limit exceeded" : "Remote MCP HTTP protocol failure", classification, { status: response.status, body, errorType: errorType || null });
+    }
     const result = Array.isArray(body) ? body.find(item => item?.id === id) : body;
-    if (result?.error) throw remoteError(result.error.message || "Remote MCP protocol error", result.error.data?.type === "ENTITLEMENT_REQUIRED" ? "auth" : "protocol", { status: response.status, rpcError: result.error });
+    if (result?.error) throw remoteError(result.error.message || "Remote MCP protocol error", ["SESSION_REQUIRED", "SESSION_BINDING_MISMATCH"].includes(result.error.data?.type) ? result.error.data.type : ["RATE_LIMITED", "RATE_LIMIT_DEGRADED"].includes(result.error.data?.type) ? "rate_limit" : result.error.data?.type === "ENTITLEMENT_REQUIRED" ? "auth" : "protocol", { status: response.status, rpcError: result.error });
     if (!result || result.id !== id) throw remoteError("Remote MCP response did not match request", "protocol", { status: response.status });
     return result.result;
   }
@@ -97,4 +107,14 @@ async function remoteHealth(options) {
 
 function canFallbackToLocal(error) { return ["network", "server"].includes(classifyRemoteError(error)); }
 
-module.exports = { RemoteMcpClient, remoteHealth, validateRemoteUrl, classifyRemoteError, canFallbackToLocal, REMOTE_READ_ONLY_TOOLS, LOCAL_ONLY_TOOLS, REMOTE_PATH };
+async function executeRemoteWithLocalFallback({ remote, local, allowFallback = false }) {
+  if (typeof remote !== "function" || typeof local !== "function") throw remoteError("Remote and local MCP operations are required", "configuration", { code: "REMOTE_OPERATION_CONFIGURATION" });
+  try {
+    return { source: "remote", result: await remote() };
+  } catch (error) {
+    if (!allowFallback || !canFallbackToLocal(error)) throw error;
+    return { source: "local", result: await local() };
+  }
+}
+
+module.exports = { RemoteMcpClient, remoteHealth, validateRemoteUrl, classifyRemoteError, canFallbackToLocal, executeRemoteWithLocalFallback, REMOTE_READ_ONLY_TOOLS, LOCAL_ONLY_TOOLS, REMOTE_PATH };

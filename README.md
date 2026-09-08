@@ -93,7 +93,10 @@ minitok models                           # List available provider models
 minitok workspace <add|list|use|current|remove> # Manage repository workspaces
 minitok auth login <provider>            # Provider authentication; unchanged semantics
 minitok auth customer-login <email>      # Customer account login
-minitok account login <email>             # Alias for auth customer-login
+minitok account login                      # Browser device authorization (recommended)
+minitok account logout                     # Revoke and remove account credentials
+minitok account switch                     # Switch account through the browser
+minitok auth customer-login <email>        # Legacy/manual customer JWT login
 minitok activate <activation-key>         # Bind a purchased key to this machine
 minitok license activate <key>           # Alias for activate
 minitok checkout --plan open              # Purchase a canonical plan

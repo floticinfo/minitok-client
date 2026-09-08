@@ -15,13 +15,12 @@
  *   6. Update gate-state.json for offline grace baseline
  */
 
-const https = require("https");
-const http = require("http");
 const { randomUUID } = require("crypto");
 const { EntitlementStore, DEFAULT_ENTITLEMENT_DIR } = require("../../entitlement/store");
 const { saveGateState } = require("../../entitlement/gate");
 const { resolveServerUrl } = require("./server-config");
 const { setOwnerOnlyPermissions } = require("../../utils/file-permissions");
+const { postJson } = require("../../core/http");
 
 const INSTALLATION_TOKEN_FILE = "installation-token.json";
 
@@ -115,50 +114,8 @@ async function cmdActivate(key, opts) {
   return 0;
 }
 
-/**
- * Minimal HTTP POST helper (no external dependencies).
- * @returns {Promise<{ ok: boolean, status: number, statusText: string, body: object|null }>}
- */
 function _httpPost(urlString, body) {
-  return new Promise((resolve, reject) => {
-    const url = new URL(urlString);
-    const isHttps = url.protocol === "https:";
-    const mod = isHttps ? https : http;
-    const payload = JSON.stringify(body);
-
-    const req = mod.request(
-      {
-        hostname: url.hostname,
-        port: url.port || (isHttps ? 443 : 80),
-        path: url.pathname,
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Content-Length": Buffer.byteLength(payload),
-        },
-        timeout: 30000,
-      },
-      (res) => {
-        let data = "";
-        res.on("data", (chunk) => (data += chunk));
-        res.on("end", () => {
-          let parsed = null;
-          try { parsed = JSON.parse(data); } catch {}
-          resolve({
-            ok: res.statusCode >= 200 && res.statusCode < 300,
-            status: res.statusCode,
-            statusText: res.statusMessage || "",
-            body: parsed,
-          });
-        });
-      }
-    );
-
-    req.on("error", reject);
-    req.on("timeout", () => { req.destroy(); reject(new Error("Request timed out")); });
-    req.write(payload);
-    req.end();
-  });
+  return postJson(urlString, body, 30000);
 }
 
-module.exports = { cmdActivate };
+module.exports = { cmdActivate, _httpPost };

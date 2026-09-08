@@ -1,6 +1,6 @@
 {
   "name": "@flotic/minitok",
-  "version": "1.3.6",
+  "version": "1.3.7",
   "description": "Repository-aware autonomous coding workflow driver",
   "main": "src/index.js",
   "bin": {
@@ -83,7 +83,6 @@
     "!src/runtime/**/*.test-seam.js",
     "!bin/minitok-admin.js",
     "!extension/",
-
     "LICENSE",
     "README.md",
     "CHANGELOG.md",

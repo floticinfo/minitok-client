@@ -69,9 +69,6 @@ function register(program) {
   addCustomerLogin(authCmd, "Log in to the minitok customer account for billing commands");
   authCmd.command("status").description("Show stored credentials and their validity").action(async () => { process.exit(await cmdAuthStatus()); });
   authCmd.command("logout").description("Remove stored credentials for a provider").argument("<provider>", "Provider name").action(async provider => { process.exit(await cmdAuthLogout(provider)); });
-  const account = program.command("account").description("Manage the minitok customer account");
-  const login = account.command("login").description("Alias for auth customer-login").argument("[email]", "Customer email").option("--email-env <name>", "Read customer email from an environment variable").option("--password-env <name>", "Read customer password from an environment variable").option("--server <url>", "minitok server URL");
-  login.action(async (email, options) => { const resolvedEmail = email || (options.emailEnv && process.env[options.emailEnv]); const value = options.passwordEnv ? process.env[options.passwordEnv] : await prompt("Customer password: "); process.exit(await cmdAuthCustomerLogin(options.server, resolvedEmail, value)); });
 }
 
 module.exports = { cmdAuthLogin, cmdAuthCustomerLogin, cmdAuthStatus, cmdAuthLogout, register };

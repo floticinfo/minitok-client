@@ -7,16 +7,20 @@ const { setOwnerOnlyPermissions } = require("../utils/file-permissions");
 const { readEnv } = require("../core/env");
 
 const CUSTOMER_TOKEN_FILE = path.join(os.homedir(), ".minitok", "entitlement", "customer-token.json");
+const ACCOUNT_SESSION_FILE = path.join(os.homedir(), ".minitok", "account", "session.json");
 
 function loadCustomerToken(filePath = CUSTOMER_TOKEN_FILE) {
   const customerToken = readEnv("minitok_customer_token");
   if (customerToken) return customerToken;
   try {
     const record = JSON.parse(fs.readFileSync(filePath, "utf-8"));
-    return typeof record.token === "string" && record.token ? record.token : null;
-  } catch {
-    return null;
-  }
+    if (typeof record.token === "string" && record.token) return record.token;
+  } catch {}
+  try {
+    const session = JSON.parse(fs.readFileSync(ACCOUNT_SESSION_FILE, "utf-8"));
+    if (typeof session.access_token === "string" && session.access_token && (!session.expires_at || Date.now() < new Date(session.expires_at).getTime() - 60000)) return session.access_token;
+  } catch {}
+  return null;
 }
 
 function saveCustomerToken(token, filePath = CUSTOMER_TOKEN_FILE) {

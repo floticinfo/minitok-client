@@ -1,0 +1,88 @@
+import * as vscode from "vscode";
+
+export type ExtensionAuthState = { access_token: string; refresh_token: string; customer_id?: string; expires_in?: number; expires_at?: string };
+export type AuthFailureKind = "login" | "entitlement" | "network";
+
+const SESSION_KEY = "minitok.secret.accountSession";
+const DEFAULT_SERVER = "https://api.minitok.dev";
+
+function serverUrl() {
+  const configured = vscode.workspace.getConfiguration("minitok").get<string>("serverUrl", DEFAULT_SERVER).trim();
+  return configured.replace(/\/$/, "");
+}
+
+function expiry(session: ExtensionAuthState) {
+  return session.expires_at || (Number.isFinite(Number(session.expires_in)) ? new Date(Date.now() + Number(session.expires_in) * 1000).toISOString() : undefined);
+}
+
+async function request(path: string, body: Record<string, string>) {
+  let response: Response;
+  try {
+    response = await fetch(`${serverUrl()}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  } catch (error) { throw Object.assign(new Error(error instanceof Error ? error.message : String(error)), { kind: "network" as const }); }
+  let value: any = null;
+  try { value = await response.json(); } catch {}
+  if (!response.ok) {
+    const error = new Error(value?.error || `Authentication request failed (${response.status})`);
+    Object.assign(error, { kind: response.status >= 500 ? "network" : "login" as AuthFailureKind });
+    throw error;
+  }
+  return value;
+}
+
+export async function readExtensionSession(context: vscode.ExtensionContext) {
+  const raw = await context.secrets.get(SESSION_KEY);
+  if (!raw) return undefined;
+  try { return JSON.parse(raw) as ExtensionAuthState; } catch { await context.secrets.delete(SESSION_KEY); return undefined; }
+}
+
+async function save(context: vscode.ExtensionContext, session: ExtensionAuthState) {
+  await context.secrets.store(SESSION_KEY, JSON.stringify({ ...session, expires_at: expiry(session) }));
+}
+
+export async function refreshExtensionSession(context: vscode.ExtensionContext) {
+  const session = await readExtensionSession(context);
+  if (!session?.refresh_token) return undefined;
+  const expiresAt = session.expires_at ? Date.parse(session.expires_at) : 0;
+  if (expiresAt > Date.now() + 60000) return session;
+  try {
+    const next = await request("/v1/auth/token/refresh", { refresh_token: session.refresh_token });
+    await save(context, next);
+    return next as ExtensionAuthState;
+  } catch { return undefined; }
+}
+
+export async function deviceLogin(context: vscode.ExtensionContext, onStatus: (text: string) => void) {
+  let start: any;
+  try { start = await request("/v1/auth/device/authorize", { client_id: "minitok-extension" }); }
+  catch (error) { throw Object.assign(error instanceof Error ? error : new Error(String(error)), { kind: "network" as const }); }
+  const verificationUrl = start.verification_uri_complete || start.verification_uri;
+  onStatus(`Waiting for browser authorization at ${start.verification_uri}`);
+  await vscode.env.openExternal(vscode.Uri.parse(verificationUrl));
+  const deadline = Date.now() + Math.min(Number(start.expires_in || 600) * 1000, 10 * 60 * 1000);
+  const interval = Math.max(2000, Number(start.interval || 5) * 1000);
+  while (Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, interval));
+    try {
+      const result = await request("/v1/auth/device/token", { device_code: start.device_code });
+      if (result.access_token && result.refresh_token) { await save(context, result); return result as ExtensionAuthState; }
+    } catch (error: any) {
+      if (error?.message === "authorization_pending") continue;
+      throw Object.assign(error instanceof Error ? error : new Error(String(error)), { kind: error?.kind || "login" });
+    }
+  }
+  throw Object.assign(new Error("Browser authorization timed out."), { kind: "login" as const });
+}
+
+export async function logoutExtension(context: vscode.ExtensionContext) {
+  const session = await readExtensionSession(context);
+  if (session?.refresh_token) { try { await request("/v1/auth/logout", { refresh_token: session.refresh_token }); } catch {} }
+  await context.secrets.delete(SESSION_KEY);
+}
+
+export function authErrorText(error: any) {
+  const kind = error?.kind || "login";
+  if (kind === "network") return `Network error: ${error.message || "Unable to reach minitok."}`;
+  if (kind === "entitlement") return `Entitlement error: ${error.message || "An active entitlement is required."}`;
+  return `Login failed: ${error.message || "Browser authorization was not completed."}`;
+}
