@@ -7,6 +7,7 @@
     "auth/index.js",
     "auth/oauth.js",
     "auth/service-account.js",
+    "auth/token-store.js",
     "cli/commands/server-config.js",
     "config/loader.js",
     "context/compaction.js",
@@ -31,6 +32,7 @@
     "git/operations.js",
     "llm/models.js",
     "llm/provider.js",
+    "mcp/runtime-token.js",
     "mcp/tools.js",
     "pipeline/check.js",
     "pipeline/implementer.js",
@@ -40,6 +42,7 @@
     "pipeline/next_task.js",
     "pipeline/planner.js",
     "pipeline/repair.js",
+    "pipeline/test-seam.js",
     "pipeline/verifier.js",
     "run-evidence.js",
     "runtime/analysis.js",
@@ -73,6 +76,10 @@
     "auth/service-account.js": {
       "source": "a7325f28c1e5ec6f9d9e7261c4213582171d63f4fcd7cb528c92fc7afde8ef53",
       "embedded": "a7325f28c1e5ec6f9d9e7261c4213582171d63f4fcd7cb528c92fc7afde8ef53"
+    },
+    "auth/token-store.js": {
+      "source": "a82ec7f8b94cde2f3b1e4f88675240a42f93cd6d440643aac38a07e3d454f52b",
+      "embedded": "a82ec7f8b94cde2f3b1e4f88675240a42f93cd6d440643aac38a07e3d454f52b"
     },
     "cli/commands/server-config.js": {
       "source": "043c5f1bd9d5444e221068f946fe90b3914df730a37d8a0213ca52ced89eb5da",
@@ -170,6 +177,10 @@
       "source": "b65f1529ceb55b624e89bdaf514eeabc23a9e007cb1b9f4a82e191118b3ae2cf",
       "embedded": "b65f1529ceb55b624e89bdaf514eeabc23a9e007cb1b9f4a82e191118b3ae2cf"
     },
+    "mcp/runtime-token.js": {
+      "source": "ff1d9e38f7e50104e849e7f4bf88d0e1b0c60433d2f3d946144047f2c49d1bc3",
+      "embedded": "ff1d9e38f7e50104e849e7f4bf88d0e1b0c60433d2f3d946144047f2c49d1bc3"
+    },
     "mcp/tools.js": {
       "source": "054d5a37f9f1744253ed78a19dc70dc4998ba4b523147e1626df433778ac4d55",
       "embedded": "054d5a37f9f1744253ed78a19dc70dc4998ba4b523147e1626df433778ac4d55"
@@ -205,6 +216,10 @@
     "pipeline/repair.js": {
       "source": "56ece90d7f45f22fac03c49a6b6edad45610ef3e894a393421e7c5f83c5b18bf",
       "embedded": "56ece90d7f45f22fac03c49a6b6edad45610ef3e894a393421e7c5f83c5b18bf"
+    },
+    "pipeline/test-seam.js": {
+      "source": "c138ad8f28c26703037fe14d7cd09b19637842fbf71b9f89150dcd38cfeaedb2",
+      "embedded": "c138ad8f28c26703037fe14d7cd09b19637842fbf71b9f89150dcd38cfeaedb2"
     },
     "pipeline/verifier.js": {
       "source": "0978939ae5d323e2df18a52b70ecf04cbf89562cd604ac9783c36c1285066296",

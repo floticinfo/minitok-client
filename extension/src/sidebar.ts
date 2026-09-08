@@ -121,7 +121,7 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
       try { await requireEntitlement(); }
       catch (error) { this.view?.webview.postMessage({ type: "entitlement", ok: false, text: String(error) }); return; }
     }
-    const commands = new Set(["device-login", "device-logout", "show-output", "stop", "interrupt", "approve", "reject", "open-evidence", "open-diff", "restore-session", "mcp-status", "mcp-connect", "mcp-list", "history", "sessions", "info", "discover-models", "activate", "attach-file", "attach-folder", "attach-problems", "settings", "save-settings", "activate-license", "update", "run", "dry-run"]);
+    const commands = new Set(["device-login", "device-logout", "show-output", "stop", "interrupt", "approve", "reject", "open-evidence", "open-diff", "restore-session", "mcp-status", "mcp-connect", "mcp-list", "history", "sessions", "info", "discover-models", "activate", "attach-file", "attach-folder", "attach-problems", "settings", "save-settings",  "update", "run", "dry-run"]);
     if (!message || typeof message.command !== "string" || !commands.has(message.command)) { this.view?.webview.postMessage({ type: "result", ok: false, text: "Unsupported command" }); return; }
     if (message.task !== undefined && (typeof message.task !== "string" || message.task.length > 20000)) { this.view?.webview.postMessage({ type: "result", ok: false, text: "Task is invalid or too long" }); return; }
     const cwd = workspacePath();
@@ -160,7 +160,6 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
     if (message.command === "attach-problems") { const diagnostics = vscode.languages.getDiagnostics().flatMap(([uri, items]) => items.map(item => `${vscode.workspace.asRelativePath(uri)}:${item.range.start.line + 1} ${item.message}`)); this.view?.webview.postMessage({ type: "attachment", value: diagnostics.length ? `@problems\n${diagnostics.join("\n")}` : "" }); return; }
     if (message.command === "settings") { await this.readSettings(); await this.discoverModels(cwd, this.context.workspaceState.get<string>("minitok.setting.provider", "")); await this.checkUpdate(); return; }
     if (message.command === "save-settings") { await this.saveSettings(message); return; }
-    if (message.command === "activate-license") { await this.activateLicense(message.key); return; }
     if (message.command === "update") { const release = cliRelease(this.context); const answer = await vscode.window.showInformationMessage(`Update minitok to ${release.version}?`, "Update", "Cancel"); if (answer === "Update") execFile("npm", ["install", "-g", `${release.packageName}@${release.version}`], { timeout: 120000, windowsHide: true }, (error, stdout, stderr) => this.view?.webview.postMessage({ type: "update-result", ok: !error, text: error ? stderr || error.message : stdout })); return; }
     try {
       requireTrustedWorkspace(cwd);
@@ -200,15 +199,6 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
       if (error) { this.view?.webview.postMessage({ type: "auth-state", ok: false, text: stderr || error.message }); return; }
       const result = await checkEntitlement();
       this.view?.webview.postMessage({ type: "auth-state", ok: result.allowed, text: result.allowed ? `Signed in with ${result.plan} plan.` : result.message || stdout });
-    });
-  }
-  private async activateLicense(key?: string) {
-    if (!key?.trim()) { this.view?.webview.postMessage({ type: "activation", ok: false, text: "Activation key is required." }); return; }
-    const env: NodeJS.ProcessEnv = { ...process.env, MINITOK_ACTIVATION_KEY: key.trim() };
-    await this.context.secrets.store("minitok.secret.activationKey", key.trim());
-    execFile(cliPath(), ["activate", "--key-env", "MINITOK_ACTIVATION_KEY"], { cwd: workspacePath(), timeout: 30000, windowsHide: true, env }, (error, stdout, stderr) => {
-      delete env.MINITOK_ACTIVATION_KEY;
-      this.view?.webview.postMessage({ type: "activation", ok: !error, text: error ? stderr || error.message : stdout });
     });
   }
   private async discoverModels(cwd?: string, provider?: string) {
@@ -350,7 +340,7 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
   }
   private async readSettings() {
     const settings = Object.fromEntries(["provider", "model", "showCost", "evidencePath", "autoApprove", "enterBehavior", "plan.provider", "plan.model", "work.provider", "work.model", "review.provider", "review.model", "intel.provider", "intel.model"].map(key => [key, key === "autoApprove" ? vscode.workspace.getConfiguration("minitok").get<boolean>(key, false) : this.context.workspaceState.get(`minitok.setting.${key}`, undefined)]));
-    const secrets = { providerApiKeySet: Boolean(await this.context.secrets.get("minitok.secret.providerApiKey")), activationKeySet: Boolean(await this.context.secrets.get("minitok.secret.activationKey")), customBaseUrlSet: Boolean(await this.context.secrets.get("minitok.secret.customBaseUrl")) };
+    const secrets = { providerApiKeySet: Boolean(await this.context.secrets.get("minitok.secret.providerApiKey")), customBaseUrlSet: Boolean(await this.context.secrets.get("minitok.secret.customBaseUrl")) };
     this.view?.webview.postMessage({ type: "settings", settings, secrets });
   }
   private html(webview: vscode.Webview) { const source = fs.readFileSync(path.join(this.extensionUri.fsPath, "src", "sidebar.html"), "utf8"); return source.replaceAll("{{nonce}}", randomBytes(16).toString("base64")).replace("{{cspSource}}", webview.cspSource); }

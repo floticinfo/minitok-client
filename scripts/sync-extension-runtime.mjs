@@ -9,7 +9,7 @@ const runtimeRoot = path.join(root, "extension", "runtime");
 const runtimeSourceRoot = path.join(runtimeRoot, "src");
 const manifestPath = path.join(runtimeRoot, "runtime-manifest.json");
 const entry = path.join(sourceRoot, "runtime", "stdio-entry.js");
-const forbidden = /(^|[\\/])(?:admin|tests?)(?:[\\/]|$)|\.test\.js$|test-seam\.js$|(?:secret|token|credential|private|\.env)/i;
+const forbidden = /(^|[\\/])(?:admin|tests?)(?:[\\/]|$)|\.test\.js$|(?:credential|private|\.env)/i;
 
 function resolveModule(file, request) {
   if (!request.startsWith(".")) return null;

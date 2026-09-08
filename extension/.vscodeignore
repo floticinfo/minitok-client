@@ -7,6 +7,7 @@ test-package.json
 package-lock.json
 node_modules/
 runtime/node_modules/**
+!runtime/node_modules/undici/**
 .vscode-test/
 *.vsix
 artifacts/
@@ -14,9 +15,10 @@ rasterize-icon.cjs
 rasterize-representative.cjs
 COMMERCIAL_READINESS.md
 runtime/src/**/*.test.js
-runtime/src/**/test-seam.js
 runtime/tests/
 runtime/admin/
 runtime/.env*
 runtime/**/*secret*
 runtime/**/*token*
+!runtime/src/auth/token-store.js
+!runtime/src/mcp/runtime-token.js

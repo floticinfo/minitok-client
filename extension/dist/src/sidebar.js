@@ -223,7 +223,7 @@ class minitokSidebar {
                 return;
             }
         }
-        const commands = new Set(["device-login", "device-logout", "show-output", "stop", "interrupt", "approve", "reject", "open-evidence", "open-diff", "restore-session", "mcp-status", "mcp-connect", "mcp-list", "history", "sessions", "info", "discover-models", "activate", "attach-file", "attach-folder", "attach-problems", "settings", "save-settings", "activate-license", "update", "run", "dry-run"]);
+        const commands = new Set(["device-login", "device-logout", "show-output", "stop", "interrupt", "approve", "reject", "open-evidence", "open-diff", "restore-session", "mcp-status", "mcp-connect", "mcp-list", "history", "sessions", "info", "discover-models", "activate", "attach-file", "attach-folder", "attach-problems", "settings", "save-settings", "update", "run", "dry-run"]);
         if (!message || typeof message.command !== "string" || !commands.has(message.command)) {
             this.view?.webview.postMessage({ type: "result", ok: false, text: "Unsupported command" });
             return;
@@ -344,10 +344,6 @@ class minitokSidebar {
             await this.saveSettings(message);
             return;
         }
-        if (message.command === "activate-license") {
-            await this.activateLicense(message.key);
-            return;
-        }
         if (message.command === "update") {
             const release = cliRelease(this.context);
             const answer = await vscode.window.showInformationMessage(`Update minitok to ${release.version}?`, "Update", "Cancel");
@@ -412,18 +408,6 @@ class minitokSidebar {
             }
             const result = await (0, entitlement_1.checkEntitlement)();
             this.view?.webview.postMessage({ type: "auth-state", ok: result.allowed, text: result.allowed ? `Signed in with ${result.plan} plan.` : result.message || stdout });
-        });
-    }
-    async activateLicense(key) {
-        if (!key?.trim()) {
-            this.view?.webview.postMessage({ type: "activation", ok: false, text: "Activation key is required." });
-            return;
-        }
-        const env = { ...process.env, MINITOK_ACTIVATION_KEY: key.trim() };
-        await this.context.secrets.store("minitok.secret.activationKey", key.trim());
-        (0, node_child_process_1.execFile)((0, workspace_1.cliPath)(), ["activate", "--key-env", "MINITOK_ACTIVATION_KEY"], { cwd: (0, workspace_1.workspacePath)(), timeout: 30000, windowsHide: true, env }, (error, stdout, stderr) => {
-            delete env.MINITOK_ACTIVATION_KEY;
-            this.view?.webview.postMessage({ type: "activation", ok: !error, text: error ? stderr || error.message : stdout });
         });
     }
     async discoverModels(cwd, provider) {
@@ -627,7 +611,7 @@ class minitokSidebar {
     }
     async readSettings() {
         const settings = Object.fromEntries(["provider", "model", "showCost", "evidencePath", "autoApprove", "enterBehavior", "plan.provider", "plan.model", "work.provider", "work.model", "review.provider", "review.model", "intel.provider", "intel.model"].map(key => [key, key === "autoApprove" ? vscode.workspace.getConfiguration("minitok").get(key, false) : this.context.workspaceState.get(`minitok.setting.${key}`, undefined)]));
-        const secrets = { providerApiKeySet: Boolean(await this.context.secrets.get("minitok.secret.providerApiKey")), activationKeySet: Boolean(await this.context.secrets.get("minitok.secret.activationKey")), customBaseUrlSet: Boolean(await this.context.secrets.get("minitok.secret.customBaseUrl")) };
+        const secrets = { providerApiKeySet: Boolean(await this.context.secrets.get("minitok.secret.providerApiKey")), customBaseUrlSet: Boolean(await this.context.secrets.get("minitok.secret.customBaseUrl")) };
         this.view?.webview.postMessage({ type: "settings", settings, secrets });
     }
     html(webview) { const source = fs.readFileSync(path.join(this.extensionUri.fsPath, "src", "sidebar.html"), "utf8"); return source.replaceAll("{{nonce}}", (0, node_crypto_1.randomBytes)(16).toString("base64")).replace("{{cspSource}}", webview.cspSource); }
