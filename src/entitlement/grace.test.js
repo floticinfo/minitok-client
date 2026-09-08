@@ -50,7 +50,7 @@ function makeEntitlement(installationId) {
       installation_id: installationId,
       plan_id: "open",
       features: ["autonomous_run"],
-      max_devices: 3,
+      max_devices: 1,
       issued_at: now.toISOString(),
       expires_at: new Date(now.getTime() + 30 * 86400000).toISOString(),
       key_id: "k1",

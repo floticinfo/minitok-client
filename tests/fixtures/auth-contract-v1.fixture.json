@@ -1,0 +1,37 @@
+{
+  "contract": "minitok-auth-v1",
+  "customer_jwt": {
+    "sub": "00000000-0000-4000-8000-000000000001",
+    "iss": "minitok-server",
+    "aud": "minitok:customer",
+    "iat": 1893456000,
+    "exp": 1896048000
+  },
+  "installation_jwt": {
+    "sub": "00000000-0000-4000-8000-000000000001",
+    "installation_id": "00000000-0000-4000-8000-000000000002",
+    "subscription_id": "00000000-0000-4000-8000-000000000003",
+    "token_type": "installation",
+    "iss": "minitok-server",
+    "aud": "minitok:installation",
+    "iat": 1893456000,
+    "exp": 1896048000
+  },
+  "plans": {
+    "open": { "max_devices": 1, "telemetry": "per_run_consent", "checkout": true },
+    "select": { "max_devices": 1, "telemetry": "aggregate_consent", "checkout": true },
+    "private": { "max_devices": 1, "telemetry": "none", "checkout": true }
+  },
+  "remote_mcp": {
+    "tools": ["minitok_status", "minitok_compact"],
+    "scopes": ["read"],
+    "filesystem": false,
+    "write": false,
+    "run": false,
+    "auto_accept": false
+  },
+  "local_mcp": {
+    "default_scope": "read",
+    "explicit_scopes": ["write", "auto_accept"]
+  }
+}
