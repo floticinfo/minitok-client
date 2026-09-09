@@ -1,7 +1,7 @@
 {
   "name": "@flotic/minitok",
-  "version": "1.3.7",
-  "description": "Repository-aware autonomous coding workflow driver",
+  "version": "1.3.8",
+  "description": "Verified repository-aware coding workflow CLI for AI agents",
   "main": "src/index.js",
   "bin": {
     "minitok": "bin/minitok.js"
@@ -52,7 +52,12 @@
     "llm",
     "code-review",
     "planning",
-    "verifier"
+    "verifier",
+    "code-generation",
+    "developer-tools",
+    "repository-automation",
+    "ai-agent",
+    "mcp-server"
   ],
   "author": "Flotic LC.",
   "license": "SEE LICENSE IN LICENSE",

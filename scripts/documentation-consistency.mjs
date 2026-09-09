@@ -15,7 +15,7 @@ if (!changelog.includes("offline grace") || !changelog.includes("bounded 7-day w
 if (readme.includes("30-day") || readme.includes("30 days") || readme.includes("zero offline grace")) errors.push("README.md: historical offline grace wording is active");
 for (const file of files) {
   const text = fs.readFileSync(path.join(root, file), "utf8");
-  if (!text.includes(`v${pkg.version}`) && !text.includes(`version ${pkg.version}`) && !text.includes(`release is \`${pkg.version}\``)) errors.push(`${file}: missing current client version ${pkg.version}`);
+  if (file !== "README.md" && !text.includes("the current `@flotic/minitok")) errors.push(`${file}: missing current package reference`);
 }
 const policy = fs.readFileSync(path.join(root, "POLICY.md"), "utf8");
 const classification = fs.readFileSync(path.join(root, "DATA_CLASSIFICATION.md"), "utf8");

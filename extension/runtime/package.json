@@ -1,6 +1,6 @@
 {
   "name": "@flotic/minitok",
-  "version": "1.3.7",
+  "version": "1.3.8",
   "description": "Repository-aware autonomous coding workflow driver",
   "main": "src/index.js",
   "bin": {

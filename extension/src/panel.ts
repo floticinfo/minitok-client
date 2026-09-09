@@ -3,12 +3,13 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { spawn, ChildProcessWithoutNullStreams, execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { cliPath, workspacePath, requireTrustedWorkspace, autoApprove } from "./workspace";
+import { cliPath, workspacePath, requireTrustedWorkspace, autoApprove, spawnSpec } from "./workspace";
 import { requireEntitlement } from "./entitlement";
 
 function runCli(cliPath: string, args: string[], cwd: string | undefined, onProcess: (child: ChildProcessWithoutNullStreams | undefined) => void): Promise<string> {
   return new Promise((resolve, reject) => {
-    const child = spawn(cliPath, args, { cwd, shell: false, windowsHide: true, detached: process.platform !== "win32" });
+    const processSpec = spawnSpec(cliPath, args);
+    const child = spawn(processSpec.command, processSpec.args, { cwd, shell: processSpec.shell, windowsHide: true, detached: process.platform !== "win32" });
     onProcess(child);
     let stdout = "";
     let stderr = "";

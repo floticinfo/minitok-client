@@ -1,48 +1,22 @@
-# minitok configuration
-# Pipeline state is stored under .minitok/contracts.
-# Configure at least one provider; the first provider is the default unless overridden.
-
 project:
-  name: "minitok-npm"
+  name: example-project
   stack: node
 
+default_provider: anthropic
 providers:
-  camel-stream:
-    base_url: https://stream.camelai.com
-    auth:
-      type: api_key
-      key: "${CAMEL_STREAM_API_KEY}"
-      scheme: Bearer
-      header: Authorization
-    models:
-      - id: auto
+  anthropic:
+    api_key_env: ANTHROPIC_API_KEY
+    model: claude-sonnet-4-20250514
 
 roles:
-  plan:
-    adapter: camel-stream
-    model: auto
-    effort: medium
-  review:
-    adapter: camel-stream
-    model: auto
-    effort: medium
-  work:
-    adapter: camel-stream
-    model: auto
-    effort: medium
-  intel:
-    adapter: camel-stream
-    model: auto
-    effort: medium
-
-budget:
-  token_budget: 500000
-  max_cycles: 3
+  intel: { provider: anthropic }
+  plan: { provider: anthropic }
+  work: { provider: anthropic }
+  review: { provider: anthropic }
 
 execution:
   max_retries: 3
   timeout_sec: 600
-  research_enabled: true
 
 commit:
   enabled: false

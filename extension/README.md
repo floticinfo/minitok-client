@@ -1,8 +1,8 @@
 # minitok
 
-**Autonomy, Efficiency, Evolution**
+**Verified repository-aware coding workflows for AI agents**
 
-minitok brings repository-aware coding workflows into VS Code. Describe a task, let minitok inspect and plan the change, run implementation, verify the result, and preserve evidence for review.
+minitok brings repository-aware coding workflows into VS Code. Describe a task, let minitok inspect and plan the change, run implementation, verify the result, review failures, and preserve evidence for review.
 
 ## What it provides
 
@@ -19,7 +19,7 @@ minitok brings repository-aware coding workflows into VS Code. Describe a task, 
 1. Install `@flotic/minitok` globally:
 
    ```bash
-   npm install -g @flotic/minitok@1.3.7
+   npm install -g @flotic/minitok@1.3.8
    ```
 
 2. Open a trusted VS Code workspace.

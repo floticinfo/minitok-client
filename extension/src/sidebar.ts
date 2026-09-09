@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { spawn, ChildProcessWithoutNullStreams, execFile, execFileSync } from "node:child_process";
 import * as os from "node:os";
 import { randomBytes, randomUUID } from "node:crypto";
-import { cliPath, mcpCommand, mcpEnvironment, mcpAuthToken, workspacePath, requireTrustedWorkspace, autoApprove } from "./workspace";
+import { cliPath, mcpCommand, mcpEnvironment, mcpAuthToken, workspacePath, requireTrustedWorkspace, autoApprove, spawnSpec } from "./workspace";
 import { checkEntitlement, requireEntitlement } from "./entitlement";
 import { authErrorText, deviceLogin, logoutExtension, refreshExtensionSession, readExtensionSession } from "./device-auth";
 
@@ -55,7 +55,10 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
       args.push("--approval-file", this.approvalFile, "--approval-timeout-ms", "1800000");
     }
     return new Promise((resolve, reject) => {
-      const child = spawn(cli, args, { cwd, shell: false, windowsHide: true, detached: process.platform !== "win32", env });
+      const processSpec = spawnSpec(cli, args);
+      this.output.appendLine(`[spawn] cli command=${JSON.stringify(processSpec.command)} args=${JSON.stringify(processSpec.args)} cwd=${JSON.stringify(cwd)}`);
+      let child: ChildProcessWithoutNullStreams;
+      try { child = spawn(processSpec.command, processSpec.args, { cwd, shell: processSpec.shell, windowsHide: true, detached: process.platform !== "win32", env }); } catch (error) { reject(error); return; }
       this.process = child;
       let output = "";
       let error = "";
@@ -277,7 +280,11 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
     const cli = cliPath();
     if (this.mcpProcess) { this.view?.webview.postMessage({ type: "mcp", ok: false, text: "MCP health check already running" }); return; }
     const configured = mcpCommand();
-    const mcp = spawn(configured[0] || cli, configured.slice(1), { cwd: workspacePath(), env: mcpEnvironment(), shell: false, windowsHide: true });
+    if (!configured.length || !configured[0]) { this.view?.webview.postMessage({ type: "mcp", ok: false, text: "minitok MCP command is not configured" }); return; }
+    const processSpec = spawnSpec(configured[0], configured.slice(1));
+    this.output.appendLine(`[spawn] mcp command=${JSON.stringify(processSpec.command)} args=${JSON.stringify(processSpec.args)} cwd=${JSON.stringify(workspacePath())}`);
+    let mcp: ChildProcessWithoutNullStreams;
+    try { mcp = spawn(processSpec.command, processSpec.args, { cwd: workspacePath(), env: mcpEnvironment(), shell: processSpec.shell, windowsHide: true }); } catch (error) { this.output.appendLine(`[spawn] synchronous error=${String(error)}`); this.view?.webview.postMessage({ type: "mcp", ok: false, text: `MCP spawn failed: ${String(error)}` }); return; }
     this.mcpProcess = mcp;
     let buffer = "";
     let nextId = 1;

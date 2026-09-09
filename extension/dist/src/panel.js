@@ -43,7 +43,8 @@ const workspace_1 = require("./workspace");
 const entitlement_1 = require("./entitlement");
 function runCli(cliPath, args, cwd, onProcess) {
     return new Promise((resolve, reject) => {
-        const child = (0, node_child_process_1.spawn)(cliPath, args, { cwd, shell: false, windowsHide: true, detached: process.platform !== "win32" });
+        const processSpec = (0, workspace_1.spawnSpec)(cliPath, args);
+        const child = (0, node_child_process_1.spawn)(processSpec.command, processSpec.args, { cwd, shell: processSpec.shell, windowsHide: true, detached: process.platform !== "win32" });
         onProcess(child);
         let stdout = "";
         let stderr = "";

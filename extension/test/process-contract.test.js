@@ -16,6 +16,9 @@ const workspace = fs.readFileSync(path.join(root, "src", "workspace.ts"), "utf8"
 test("panel process lifecycle contract", () => {
   assert.match(panel, /setTimeout\([\s\S]*?1800000/);
   assert.match(panel, /detached:\s*process\.platform !== "win32"/);
+  assert.match(panel, /spawnSpec/);
+  assert.match(sidebar, /spawnSpec/);
+  assert.match(workspace, /ComSpec/);
   assert.match(panel, /taskkill/);
   assert.match(panel, /A minitok run is already active/);
 });

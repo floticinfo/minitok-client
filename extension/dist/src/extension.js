@@ -38,20 +38,23 @@ exports.deactivate = deactivate;
 const vscode = __importStar(require("vscode"));
 const node_child_process_1 = require("node:child_process");
 const panel_1 = require("./panel");
-const sidebar_1 = require("./sidebar");
 const workspace_1 = require("./workspace");
+const sidebar_1 = require("./sidebar");
+const workspace_2 = require("./workspace");
 const entitlement_1 = require("./entitlement");
 function extensionVersion(context) {
     return String(context.extension.packageJSON.version);
 }
 function runCli(cliPath, args) {
     return new Promise((resolve, reject) => {
-        (0, node_child_process_1.execFile)(cliPath, args, { cwd: (0, workspace_1.workspacePath)(), timeout: 1800000, windowsHide: true }, (error, stdout, stderr) => {
-            if (error)
-                reject(new Error(stderr || error.message));
-            else
-                resolve(stdout);
-        });
+        const spec = (0, workspace_1.spawnSpec)(cliPath, args);
+        const child = (0, node_child_process_1.spawn)(spec.command, spec.args, { cwd: (0, workspace_2.workspacePath)(), shell: spec.shell, windowsHide: true });
+        let stdout = "";
+        let stderr = "";
+        child.stdout.on("data", chunk => { stdout += chunk.toString(); });
+        child.stderr.on("data", chunk => { stderr += chunk.toString(); });
+        child.on("error", error => reject(error));
+        child.on("close", code => code === 0 ? resolve(stdout) : reject(new Error(stderr || stdout || `minitok exited with code ${code}`)));
     });
 }
 function activate(context) {
@@ -77,8 +80,22 @@ function activate(context) {
             return;
         }
         output.show(true);
-        const command = (0, workspace_1.mcpCommand)();
-        const child = (0, node_child_process_1.spawn)(command[0], command.slice(1), { cwd: (0, workspace_1.workspacePath)(), env: (0, workspace_1.mcpEnvironment)(), shell: false, windowsHide: true });
+        const command = (0, workspace_2.mcpCommand)();
+        if (!command.length || !command[0]) {
+            vscode.window.showErrorMessage("minitok MCP command is not configured");
+            return;
+        }
+        const processSpec = (0, workspace_1.spawnSpec)(command[0], command.slice(1));
+        output.appendLine(`[spawn] mcp command=${JSON.stringify(processSpec.command)} args=${JSON.stringify(processSpec.args)} cwd=${JSON.stringify((0, workspace_2.workspacePath)())}`);
+        let child;
+        try {
+            child = (0, node_child_process_1.spawn)(processSpec.command, processSpec.args, { cwd: (0, workspace_2.workspacePath)(), env: (0, workspace_2.mcpEnvironment)(), shell: processSpec.shell, windowsHide: true });
+        }
+        catch (error) {
+            output.appendLine(`[spawn] synchronous error=${String(error)}`);
+            vscode.window.showErrorMessage(`minitok MCP spawn failed: ${String(error)}`);
+            return;
+        }
         let buffer = "";
         const finish = (text) => { child.kill(); output.appendLine(text); vscode.window.showInformationMessage(text); };
         const timer = setTimeout(() => finish("minitok MCP handshake timed out"), 5000);
@@ -90,7 +107,7 @@ function activate(context) {
                     finish(`minitok MCP error: ${message.error.message}`);
                 }
                 else if (message.id === 1)
-                    child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list", params: { authToken: (0, workspace_1.mcpAuthToken)() } })}\n`);
+                    child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list", params: { authToken: (0, workspace_2.mcpAuthToken)() } })}\n`);
                 else if (message.id === 2) {
                     clearTimeout(timer);
                     finish(`minitok MCP online: ${message.result?.tools?.length || 0} tools`);
@@ -99,7 +116,7 @@ function activate(context) {
             catch { }
         } });
         child.on("error", (error) => { clearTimeout(timer); finish(`minitok MCP offline: ${error.message}`); });
-        child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "minitok-extension", version: extensionVersion(context) }, authToken: (0, workspace_1.mcpAuthToken)() } })}\n`);
+        child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "minitok-extension", version: extensionVersion(context) }, authToken: (0, workspace_2.mcpAuthToken)() } })}\n`);
     }));
     context.subscriptions.push(vscode.commands.registerCommand("minitok.run", async () => {
         try {
@@ -112,7 +129,7 @@ function activate(context) {
         const task = await vscode.window.showInputBox({ prompt: "minitok task" });
         if (!task)
             return;
-        if (!(0, workspace_1.workspacePath)()) {
+        if (!(0, workspace_2.workspacePath)()) {
             vscode.window.showErrorMessage("Open a workspace folder before running minitok");
             return;
         }
@@ -120,7 +137,7 @@ function activate(context) {
             vscode.window.showErrorMessage("Trust this workspace before running minitok");
             return;
         }
-        const autoApproveSetting = (0, workspace_1.autoApprove)();
+        const autoApproveSetting = (0, workspace_2.autoApprove)();
         if (!autoApproveSetting) {
             const answer = await vscode.window.showWarningMessage("Allow minitok to modify this workspace?", "Approve", "Cancel");
             if (answer !== "Approve")
@@ -128,7 +145,7 @@ function activate(context) {
         }
         output.show(true);
         try {
-            output.appendLine(await runCli((0, workspace_1.cliPath)(), ["run", task, ...(autoApproveSetting ? ["--auto-accept"] : [])]));
+            output.appendLine(await runCli((0, workspace_2.cliPath)(), ["run", task, ...(autoApproveSetting ? ["--auto-accept"] : [])]));
         }
         catch (error) {
             output.appendLine(String(error));
@@ -139,10 +156,10 @@ function activate(context) {
         output.show(true);
         try {
             await requireEntitlement();
-            const version = await runCli((0, workspace_1.cliPath)(), ["--version"]);
-            if (!(0, workspace_1.isCliCompatible)(version))
+            const version = await runCli((0, workspace_2.cliPath)(), ["--version"]);
+            if (!(0, workspace_2.isCliCompatible)(version))
                 throw new Error(`Unsupported minitok CLI version: ${version.trim()}`);
-            output.appendLine(await runCli((0, workspace_1.cliPath)(), ["status"]));
+            output.appendLine(await runCli((0, workspace_2.cliPath)(), ["status"]));
         }
         catch (error) {
             output.appendLine(String(error));

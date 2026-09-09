@@ -43,10 +43,24 @@ export function cliPath() {
   return defaultCliPath();
 }
 
+function quoteCmdArg(value: string) { return `"${value.replace(/"/g, '\\"')}"`; }
+
+export function spawnSpec(command: string, args: string[]) {
+  if (process.platform !== "win32" || !command.toLowerCase().endsWith(".cmd")) return { command, args, shell: false };
+  const commandLine = ["call", quoteCmdArg(command), ...args.map(quoteCmdArg)].join(" ");
+  return { command: process.env.ComSpec || "cmd.exe", args: ["/d", "/s", "/c", commandLine], shell: false };
+}
+
 export function mcpCommand() {
   const configured = vscode.workspace.getConfiguration("minitok").get<string | string[]>("mcpCommand", "");
-  if (Array.isArray(configured)) return configured.filter(value => typeof value === "string" && value.length > 0);
-  if (typeof configured === "string" && configured.trim()) return parseMcpCommand(configured);
+  if (Array.isArray(configured)) {
+    const parsed = configured.filter(value => typeof value === "string" && value.length > 0);
+    if (parsed.length) return parsed;
+  }
+  if (typeof configured === "string" && configured.trim()) {
+    const parsed = parseMcpCommand(configured);
+    if (parsed.length) return parsed;
+  }
   return packagedMcpCommand(path.resolve(__dirname, "../.."), process.execPath);
 }
 

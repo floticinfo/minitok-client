@@ -1,12 +1,12 @@
 {
   "name": "minitok-extension",
   "displayName": "minitok",
-  "description": "Autonomy, Efficiency, Evolution",
+  "description": "Run AI coding tasks through planning, verification, review, repair, and evidence",
   "publisher": "Flotic",
-  "version": "0.1.6",
+  "version": "0.2.3",
   "minitok": {
     "cliPackage": "@flotic/minitok",
-    "cliVersion": "1.3.7"
+    "cliVersion": "1.3.8"
   },
   "author": "Flotic",
   "license": "SEE LICENSE IN LICENSE",
@@ -43,7 +43,11 @@
     "AI",
     "coding agent",
     "MCP",
-    "code review"
+    "code review",
+    "AI agent",
+    "repository automation",
+    "verified coding",
+    "developer tools"
   ],
     "activationEvents": [
     "onCommand:minitok.run",

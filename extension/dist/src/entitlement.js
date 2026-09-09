@@ -12,9 +12,18 @@ async function requireEntitlement() {
 }
 function checkEntitlement() {
     return new Promise(resolve => {
-        (0, node_child_process_1.execFile)((0, workspace_1.cliPath)(), ["status", "--json"], { cwd: (0, workspace_1.workspacePath)(), timeout: 30000, windowsHide: true, maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
-            if (error) {
-                resolve({ checked: true, allowed: false, message: stderr || error.message });
+        const spec = (0, workspace_1.spawnSpec)((0, workspace_1.cliPath)(), ["status", "--json"]);
+        const child = (0, node_child_process_1.spawn)(spec.command, spec.args, { cwd: (0, workspace_1.workspacePath)(), shell: spec.shell, windowsHide: true });
+        let stdout = "";
+        let stderr = "";
+        const timer = setTimeout(() => { child.kill(); resolve({ checked: true, allowed: false, message: "Entitlement check timed out" }); }, 30000);
+        child.stdout.on("data", chunk => { stdout += chunk.toString(); });
+        child.stderr.on("data", chunk => { stderr += chunk.toString(); });
+        child.on("error", error => { clearTimeout(timer); resolve({ checked: true, allowed: false, message: stderr || error.message }); });
+        child.on("close", code => {
+            clearTimeout(timer);
+            if (code !== 0) {
+                resolve({ checked: true, allowed: false, message: stderr || `minitok exited with code ${code}` });
                 return;
             }
             try {

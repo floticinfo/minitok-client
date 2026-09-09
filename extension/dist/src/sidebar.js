@@ -100,7 +100,16 @@ class minitokSidebar {
             args.push("--approval-file", this.approvalFile, "--approval-timeout-ms", "1800000");
         }
         return new Promise((resolve, reject) => {
-            const child = (0, node_child_process_1.spawn)(cli, args, { cwd, shell: false, windowsHide: true, detached: process.platform !== "win32", env });
+            const processSpec = (0, workspace_1.spawnSpec)(cli, args);
+            this.output.appendLine(`[spawn] cli command=${JSON.stringify(processSpec.command)} args=${JSON.stringify(processSpec.args)} cwd=${JSON.stringify(cwd)}`);
+            let child;
+            try {
+                child = (0, node_child_process_1.spawn)(processSpec.command, processSpec.args, { cwd, shell: processSpec.shell, windowsHide: true, detached: process.platform !== "win32", env });
+            }
+            catch (error) {
+                reject(error);
+                return;
+            }
             this.process = child;
             let output = "";
             let error = "";
@@ -513,7 +522,21 @@ class minitokSidebar {
             return;
         }
         const configured = (0, workspace_1.mcpCommand)();
-        const mcp = (0, node_child_process_1.spawn)(configured[0] || cli, configured.slice(1), { cwd: (0, workspace_1.workspacePath)(), env: (0, workspace_1.mcpEnvironment)(), shell: false, windowsHide: true });
+        if (!configured.length || !configured[0]) {
+            this.view?.webview.postMessage({ type: "mcp", ok: false, text: "minitok MCP command is not configured" });
+            return;
+        }
+        const processSpec = (0, workspace_1.spawnSpec)(configured[0], configured.slice(1));
+        this.output.appendLine(`[spawn] mcp command=${JSON.stringify(processSpec.command)} args=${JSON.stringify(processSpec.args)} cwd=${JSON.stringify((0, workspace_1.workspacePath)())}`);
+        let mcp;
+        try {
+            mcp = (0, node_child_process_1.spawn)(processSpec.command, processSpec.args, { cwd: (0, workspace_1.workspacePath)(), env: (0, workspace_1.mcpEnvironment)(), shell: processSpec.shell, windowsHide: true });
+        }
+        catch (error) {
+            this.output.appendLine(`[spawn] synchronous error=${String(error)}`);
+            this.view?.webview.postMessage({ type: "mcp", ok: false, text: `MCP spawn failed: ${String(error)}` });
+            return;
+        }
         this.mcpProcess = mcp;
         let buffer = "";
         let nextId = 1;

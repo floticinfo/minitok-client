@@ -1,5 +1,5 @@
-import { execFile } from "node:child_process";
-import { cliPath, workspacePath } from "./workspace";
+import { spawn } from "node:child_process";
+import { cliPath, workspacePath, spawnSpec } from "./workspace";
 
 export type EntitlementState = { checked: boolean; allowed: boolean; plan?: string | null; message?: string };
 
@@ -11,8 +11,17 @@ export async function requireEntitlement(): Promise<EntitlementState> {
 
 export function checkEntitlement(): Promise<EntitlementState> {
   return new Promise(resolve => {
-    execFile(cliPath(), ["status", "--json"], { cwd: workspacePath(), timeout: 30000, windowsHide: true, maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
-      if (error) { resolve({ checked: true, allowed: false, message: stderr || error.message }); return; }
+    const spec = spawnSpec(cliPath(), ["status", "--json"]);
+    const child = spawn(spec.command, spec.args, { cwd: workspacePath(), shell: spec.shell, windowsHide: true });
+    let stdout = "";
+    let stderr = "";
+    const timer = setTimeout(() => { child.kill(); resolve({ checked: true, allowed: false, message: "Entitlement check timed out" }); }, 30000);
+    child.stdout.on("data", chunk => { stdout += chunk.toString(); });
+    child.stderr.on("data", chunk => { stderr += chunk.toString(); });
+    child.on("error", error => { clearTimeout(timer); resolve({ checked: true, allowed: false, message: stderr || error.message }); });
+    child.on("close", code => {
+      clearTimeout(timer);
+      if (code !== 0) { resolve({ checked: true, allowed: false, message: stderr || `minitok exited with code ${code}` }); return; }
       try {
         const result = JSON.parse(stdout);
         const entitlement = result.entitlement || {};

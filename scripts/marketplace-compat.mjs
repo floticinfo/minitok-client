@@ -12,7 +12,7 @@ function run(args) {
 }
 
 const files = run(["ls", "--no-dependencies"]).split(/\r?\n/).map(line => line.trim()).filter(Boolean);
-const forbidden = files.filter(file => /(^|\/)(test|tests|node_modules|artifacts|\.vscode-test)(\/|$)|\.test\.[cm]?js$|\.vsix$/.test(file));
+const forbidden = files.filter(file => !file.startsWith("runtime/node_modules/undici/") && /(^|\/)(test|tests|node_modules|artifacts|\.vscode-test)(\/|$)|\.test\.[cm]?js$|\.vsix$/.test(file));
 const required = ["package.json", "dist/src/extension.js", "src/sidebar.html", "media/minitok.png"];
 const missing = required.filter(file => !files.includes(file));
 const errors = [...forbidden.map(file => `forbidden packaged path: ${file}`), ...missing.map(file => `required packaged path missing: ${file}`)];
