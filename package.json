@@ -19,6 +19,8 @@
     "artifact:report": "node scripts/artifact-report.mjs report",
     "artifact:runtime": "node scripts/artifact-report.mjs runtime",
     "artifact:http": "node scripts/artifact-report.mjs http",
+    "demo:transcript": "node scripts/demo-transcript.mjs",
+    "benchmark:validate": "node scripts/real-benchmark-validate.mjs",
     "test": "node --test tests/**/*.js src/**/*.test.js",
     "lint": "eslint --max-warnings=0 bin src tests",
     "typecheck": "tsc -p tsconfig.json",

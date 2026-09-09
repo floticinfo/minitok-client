@@ -18,7 +18,7 @@
 6. Show the verification result, changed files, `minitok status`, and evidence path.
 7. Blur repository paths, customer identifiers, tokens, and provider output that contains sensitive data.
 
-Do not publish a recording until the repository-local verification command passes.
+Run `npm run demo:transcript -- C:\path\to\disposable-repository` to capture a sanitized terminal transcript. Do not publish a recording until the repository-local verification command passes. For real benchmark data, run `npm run benchmark:validate -- baseline-run.json minitok-run.json`; the validator rejects synthetic/example records and any run whose verification exit code is nonzero.
 
 ## Current evidence status
 
