@@ -63,7 +63,7 @@
   "license": "SEE LICENSE IN LICENSE",
   "repository": {
     "type": "git",
-    "url": "https://github.com/floticinfo/minitok"
+    "url": "git+https://github.com/floticinfo/minitok.git"
   },
   "bugs": {
     "url": "https://github.com/floticinfo/minitok/issues"
@@ -89,6 +89,8 @@
     "LICENSE",
     "README.md",
     "CHANGELOG.md",
+    "DEMO_EVIDENCE.md",
+    "BENCHMARK_EVIDENCE.json",
     "EULA.md",
     "POLICY.md",
     "DATA_CLASSIFICATION.md"
@@ -98,5 +100,10 @@
     "@types/node": "^22.10.0",
     "eslint": "^10.9.1",
     "typescript": "^5.7.2"
-  }
+  },
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "type": "commonjs"
 }

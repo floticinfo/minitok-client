@@ -1,0 +1,9 @@
+{
+  "status": "not_run",
+  "reason": "No valid paired baseline/minitok repeated-run dataset was available. Example benchmark files are templates and are not measurements.",
+  "package": "@flotic/minitok@1.3.10",
+  "source_commit": "d211624",
+  "runs": 0,
+  "synthetic": false,
+  "publishable_claim": false
+}

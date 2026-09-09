@@ -20,6 +20,10 @@
 
 Do not publish a recording until the repository-local verification command passes.
 
+## Current evidence status
+
+`DEMO_EVIDENCE.md` records a reproducible dry-run prerequisite check. `BENCHMARK_EVIDENCE.json` explicitly records that no real paired benchmark has been run. Do not publish performance claims until repeated baseline and minitok runs produce sanitized raw data.
+
 ## Submission order
 
 1. Publish the demo and raw benchmark evidence in the GitHub repository.
