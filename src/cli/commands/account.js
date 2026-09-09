@@ -54,16 +54,18 @@ async function accountLogin(options = {}) {
   const server = resolveServerUrl({ cliServer: options.server });
   let start;
   try { start = await postJson(`${server}/v1/auth/device/authorize`, { client_id: "minitok-cli" }, options.timeoutMs || 30000); } catch (error) { console.error(`[error] Account login failed: ${error.message}`); return 1; }
-  if (!start.ok || !start.body?.device_code) { console.error("[error] Unable to start account login."); return 1; }
-  const url = start.body.verification_uri_complete || start.body.verification_uri;
-  console.error(`Open this URL to authorize minitok:\n${url}`);
-  if (options.openBrowser !== false) { try { openBrowser(url); } catch {} }
-  const deadline = Date.now() + (options.timeoutMs || 10 * 60 * 1000);
-  const interval = Math.max(1000, Number(start.body.interval || 5) * 1000);
+   const deviceCode = start.body?.device_code || start.body?.deviceCode;
+   if (!start.ok || !deviceCode) { console.error("[error] Unable to start account login."); return 1; }
+   const url = start.body.verification_uri_complete || start.body.verificationUriComplete || start.body.verification_uri || start.body.verificationUri;
+   console.error(`Open this URL to authorize minitok:\n${url}`);
+   if (options.openBrowser !== false) { try { openBrowser(url); } catch {} }
+   const deadline = Date.now() + (options.timeoutMs || 10 * 60 * 1000);
+   const interval = Math.max(1000, Number(start.body.interval || 5) * 1000);
+
   while (Date.now() < deadline) {
     if (process.stdin.isTTY && process.stdin.readableEnded) { console.error("[error] Login cancelled."); return 1; }
     let result;
-    try { result = await postJson(`${server}/v1/auth/device/token`, { device_code: start.body.device_code }, Math.min(30000, deadline - Date.now())); } catch (error) { console.error(`[error] Account login failed: ${error.message}`); return 1; }
+      try { result = await postJson(`${server}/v1/auth/device/token`, { device_code: deviceCode }, Math.min(30000, deadline - Date.now())); } catch (error) { console.error(`[error] Account login failed: ${error.message}`); return 1; }
     if (result.ok && result.body?.access_token && result.body?.refresh_token) {
       saveAccountSession(result.body);
       console.error("[ok] Account login successful. Credentials stored securely.");

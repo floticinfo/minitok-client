@@ -10,7 +10,7 @@ Status: reproducible dry-run evidence, not a performance claim.
 - Node.js: `v24.15.0`
 - CLI initialization: `minitok migrate .` completed and created `minitok.yml` and `VERIFY_CMD.mjs`
 - Verification: after correction, `node --test` passed (`1` test, `0` failures)
-- Real task attempt: blocked before model execution by entitlement error `SERVER_UNREACHABLE`; no code change or performance result was claimed
+- Real task attempt: blocked before model execution by entitlement error `SERVER_UNREACHABLE`; production `/health` and `/readyz` were healthy, but device authorization continued returning HTTP 503 `Rate limiting is temporarily unavailable` after the rate-limit table was created and the API container was recreated; no code change or performance result was claimed
 - Dry-run task: `Add a health-check endpoint and tests while preserving the existing API`
 - Provider credentials: configured locally but not included in this evidence
 - Secrets: no credentials or customer identifiers recorded
