@@ -1,6 +1,6 @@
 {
   "name": "@flotic/minitok",
-  "version": "1.3.9",
+  "version": "1.3.10",
   "description": "Verified repository-aware coding workflow CLI for AI agents",
   "main": "src/index.js",
   "bin": {
@@ -91,8 +91,7 @@
     "CHANGELOG.md",
     "EULA.md",
     "POLICY.md",
-    "DATA_CLASSIFICATION.md",
-    "COMMERCIAL_READINESS.md"
+    "DATA_CLASSIFICATION.md"
   ],
   "devDependencies": {
     "@eslint/js": "^10.0.1",
