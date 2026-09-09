@@ -5,7 +5,7 @@
 - Website: https://minitok.dev
 - Documentation: https://minitok.dev/docs
 - npm: https://www.npmjs.com/package/@flotic/minitok
-- GitHub: https://github.com/floticinfo/minitok-client
+- GitHub: https://github.com/floticinfo/minitok
 - Install: `npm install -g @flotic/minitok`
 
 ## One-line pitch

@@ -34,7 +34,7 @@ Recommended integration entry points:
 
 - CLI: `minitok doctor`, `minitok migrate`, `minitok run \"<task>\"`, and `minitok status`
 - Documentation: `https://minitok.dev/docs`
-- Source and issue tracker: `https://github.com/floticinfo/minitok-client`
+- Source and issue tracker: `https://github.com/floticinfo/minitok`
 - Package: `@flotic/minitok` on npm
 
 Suggested agent instruction:
