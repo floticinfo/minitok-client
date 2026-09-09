@@ -37,10 +37,10 @@
   "license": "SEE LICENSE IN LICENSE",
   "repository": {
     "type": "git",
-    "url": "https://github.com/floticinfo/minitok-client"
+    "url": "https://github.com/floticinfo/minitok"
   },
   "bugs": {
-    "url": "https://github.com/floticinfo/minitok-client/issues"
+    "url": "https://github.com/floticinfo/minitok/issues"
   },
   "homepage": "https://minitok.dev",
   "engines": {
