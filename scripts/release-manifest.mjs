@@ -39,9 +39,9 @@ export function validateManifest(manifest, { packageData = packageJson, gitData 
   if (!release?.tree || !/^[0-9a-f]{40}$/.test(release.tree)) errors.push("manifest tree is missing or invalid");
   if (gitData) {
     if (gitData.status) errors.push("source worktree is dirty");
-    if (gitData.commit !== release.commit) errors.push("manifest commit does not match HEAD");
-    if (gitData.tree !== release.tree) errors.push("manifest tree does not match HEAD");
-    if (!gitData.tags.includes(release.tag)) errors.push(`release tag ${release.tag} does not point at HEAD`);
+    if (gitData.commit !== release.commit && gitData.tagCommit !== release.commit) errors.push("manifest commit does not match HEAD or release tag target");
+    if (gitData.tree !== release.tree && gitData.tagTree !== release.tree) errors.push("manifest tree does not match HEAD or release tag target");
+    if (!gitData.tags.includes(release.tag) && gitData.tagCommit !== release.commit) errors.push(`release tag ${release.tag} does not point at the manifest release commit`);
   }
   if (changelog && !changelogHasVersion(packageData.version)) errors.push(`CHANGELOG.md has no ${packageData.version} heading`);
   if (!release?.artifact?.filename || !release.artifact.sha256 || !release.artifact.integrity || !Array.isArray(release.artifact.files)) errors.push("manifest npm pack evidence is incomplete");
@@ -50,17 +50,29 @@ export function validateManifest(manifest, { packageData = packageJson, gitData 
 
 export function readGitData() {
   const status = git("status", "--short", "--untracked-files=all").split(/\r?\n/).filter(Boolean).filter(line => !line.endsWith(" release-manifest.json"));
-  return { commit: git("rev-parse", "HEAD"), tree: git("rev-parse", "HEAD^{tree}"), status: status.join("\n"), tags: git("tag", "--points-at", "HEAD").split(/\r?\n/).filter(Boolean) };
+  const commit = git("rev-parse", "HEAD");
+  const tree = git("rev-parse", "HEAD^{tree}");
+  const tags = git("tag", "--points-at", "HEAD").split(/\r?\n/).filter(Boolean);
+  const releaseTag = `v${packageJson.version}`;
+  let tagCommit = "";
+  let tagTree = "";
+  try {
+    tagCommit = git("rev-parse", `${releaseTag}^{commit}`);
+    tagTree = git("rev-parse", `${releaseTag}^{commit}^{tree}`);
+  } catch {}
+  return { commit, tree, tagCommit, tagTree, status: status.join("\n"), tags };
 }
 
 export function generateManifest() {
   const gitData = readGitData();
   if (gitData.status) throw new Error(`source worktree is dirty; refusing release manifest generation:\n${gitData.status}`);
   const tag = `v${packageJson.version}`;
-  if (!gitData.tags.includes(tag)) throw new Error(`HEAD is untagged for ${tag}; refusing release manifest generation`);
+  if (!gitData.tags.includes(tag) && gitData.tagCommit !== gitData.commit) throw new Error(`HEAD is untagged for ${tag}; refusing release manifest generation`);
+  const releaseCommit = gitData.tags.includes(tag) ? gitData.commit : gitData.tagCommit;
+  const releaseTree = gitData.tags.includes(tag) ? gitData.tree : gitData.tagTree;
   const packed = pack();
   rmSync(packed.archivePath, { force: true });
-  const manifest = { schemaVersion: 1, release: { package: packageJson.name, version: packageJson.version, commit: gitData.commit, tree: gitData.tree, tag, changelog: `## ${packageJson.version}`, artifact: packed.artifact }, approvals: { legal: "NOT_GRANTED", support: "NOT_GRANTED", operations: "NOT_GRANTED", publication: "NOT_GRANTED" } };
+  const manifest = { schemaVersion: 1, release: { package: packageJson.name, version: packageJson.version, commit: releaseCommit, tree: releaseTree, tag, changelog: `## ${packageJson.version}`, artifact: packed.artifact }, approvals: { legal: "NOT_GRANTED", support: "NOT_GRANTED", operations: "NOT_GRANTED", publication: "NOT_GRANTED" } };
   const output = path.join(root, "release-manifest.json");
   writeFileSync(output, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
   return manifest;

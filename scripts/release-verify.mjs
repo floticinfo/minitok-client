@@ -29,7 +29,11 @@ try {
   if (status) errors.push(`working tree is not clean; modified paths:\n${status}`);
 
   const expectedTags = [`v${packageJson.version}`, packageJson.version];
-  if (!tags.some(tag => expectedTags.includes(tag))) errors.push(`HEAD ${head || "(unknown)"} has no expected release tag; found: ${tags.join(", ") || "(none)"}`);
+  const releaseManifest = JSON.parse(readFileSync(path.join(root, "release-manifest.json"), "utf8"));
+  let taggedReleaseCommit = "";
+  try { taggedReleaseCommit = git("rev-parse", `${expectedTags[0]}^{commit}`); } catch {}
+  const releaseTagMatches = tags.some(tag => expectedTags.includes(tag)) || (taggedReleaseCommit && taggedReleaseCommit === releaseManifest.release?.commit);
+  if (!releaseTagMatches) errors.push(`release tag does not point at the manifest release commit; HEAD=${head || "(unknown)"}; tagTarget=${taggedReleaseCommit || "(none)"}`);
   if (releaseTag && !expectedTags.includes(releaseTag)) errors.push(`release ref ${releaseTag} does not match package version ${packageJson.version}`);
   if (lockJson.packages?.[""]?.version !== packageJson.version) errors.push("package-lock version does not match package version");
   const output = run(process.platform === "win32" ? process.env.ComSpec || "cmd.exe" : "npm", process.platform === "win32" ? ["/d", "/s", "/c", "npm pack --json"] : ["pack", "--json"]);
