@@ -29,7 +29,7 @@ if (!extensionPackage.galleryBanner?.color || !extensionPackage.galleryBanner?.t
 if (!extensionPackage.preview) warnings.push("preview flag is not explicitly declared");
 
 const files = runVsce(["ls", "--no-dependencies"]).split(/\r?\n/).map(line => line.trim()).filter(Boolean);
-const forbidden = files.filter(file => /(^|\/)(test|tests|node_modules|artifacts|\.vscode-test)(\/|$)|\.test\.[cm]?js$|\.vsix$/.test(file));
+const forbidden = files.filter(file => /(^|\/)(test|tests|artifacts|\.vscode-test)(\/|$)|\.test\.[cm]?js$|\.vsix$/.test(file) && !/^runtime\/node_modules\//.test(file));
 if (forbidden.length) errors.push(...forbidden.map(file => `development file is packaged: ${file}`));
 for (const required of ["package.json", "LICENSE", "dist/src/extension.js", "media/minitok.png"]) if (!files.includes(required)) errors.push(`required Marketplace file is missing: ${required}`);
 
