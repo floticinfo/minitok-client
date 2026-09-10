@@ -6,7 +6,7 @@
   "version": "0.2.3",
   "minitok": {
     "cliPackage": "@flotic/minitok",
-    "cliVersion": "1.3.10"
+    "cliVersion": "1.3.11"
   },
   "author": "Flotic",
   "license": "SEE LICENSE IN LICENSE",
@@ -27,7 +27,9 @@
   "engines": {
     "vscode": ">=1.90.0"
   },
-  "extensionKind": ["workspace"],
+  "extensionKind": [
+    "workspace"
+  ],
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": false,
@@ -49,7 +51,7 @@
     "verified coding",
     "developer tools"
   ],
-    "activationEvents": [
+  "activationEvents": [
     "onCommand:minitok.run",
     "onCommand:minitok.status",
     "onCommand:minitok.openPanel",
@@ -60,10 +62,22 @@
   "main": "./dist/src/extension.js",
   "contributes": {
     "viewsContainers": {
-      "activitybar": [{ "id": "minitok", "title": "minitok", "icon": "media/minitok.svg" }]
+      "activitybar": [
+        {
+          "id": "minitok",
+          "title": "minitok",
+          "icon": "media/minitok.svg"
+        }
+      ]
     },
     "views": {
-      "minitok": [{ "type": "webview", "id": "minitok.sidebar", "name": "" }]
+      "minitok": [
+        {
+          "type": "webview",
+          "id": "minitok.sidebar",
+          "name": ""
+        }
+      ]
     },
     "commands": [
       {
@@ -101,8 +115,13 @@
           "description": "minitok authentication server URL"
         },
         "minitok.mcpCommand": {
-          "type": ["string", "array"],
-          "items": { "type": "string" },
+          "type": [
+            "string",
+            "array"
+          ],
+          "items": {
+            "type": "string"
+          },
           "default": "",
           "description": "Command used to connect the minitok MCP runtime. Use an argument array or quote paths containing spaces."
         },

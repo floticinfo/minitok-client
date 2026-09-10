@@ -1,7 +1,7 @@
 {
   "source": "canonical-root-src",
   "cliPackage": "@flotic/minitok",
-  "cliVersion": "1.3.10",
+  "cliVersion": "1.3.11",
   "entry": "src/runtime/stdio-entry.js",
   "files": [
     "auth/index.js",
@@ -114,8 +114,8 @@
       "embedded": "c0407040270c18f87f79fb07cf4dd537f2702729da9ff13238b26c1129c60f3d"
     },
     "entitlement/online.js": {
-      "source": "545abd57b1b4885d4d77a14d46d24ff48b1d4f860504b0546bab1b656c2ff3f9",
-      "embedded": "545abd57b1b4885d4d77a14d46d24ff48b1d4f860504b0546bab1b656c2ff3f9"
+      "source": "9f8c1a3392a11f74db588ad1b854958855f4d7f01410f8c5c6d680876242e723",
+      "embedded": "9f8c1a3392a11f74db588ad1b854958855f4d7f01410f8c5c6d680876242e723"
     },
     "entitlement/policy.js": {
       "source": "f9c4b4b23846f099ffa8ba5bbe043d00bf7e1b9bf3997130ddff7a5eac7e6917",

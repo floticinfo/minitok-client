@@ -1,10 +1,14 @@
 import { spawn } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const root = process.argv[2] ? path.resolve(process.argv[2]) : process.cwd();
 const task = process.argv.slice(3).join(" ") || "Add a health-check endpoint and tests while preserving the existing API";
-const output = path.join(root, ".minitok", "demo-transcript.txt");
+const output = process.env.MINITOK_DEMO_OUTPUT ? path.resolve(process.env.MINITOK_DEMO_OUTPUT) : path.join(root, ".minitok", "demo-transcript.txt");
+if (path.resolve(root) === path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")) {
+  throw new Error("demo target must be a disposable repository, not the minitok source tree");
+}
 /** @type {[string, string[]][]} */
 const commands = [
   ["node", ["--version"]],

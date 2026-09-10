@@ -25,7 +25,7 @@ const mcpCommand = read("src/cli/commands/mcp.js");
 expect(serverConfig.includes(`const DEFAULT_SERVER_URL = "${fixture.api.defaultOrigin}"`), "production API default", fixture.api.defaultOrigin);
 expect(serverConfig.includes("Remote http server URLs are not allowed") && serverConfig.includes("must not contain credentials"), "server URL safety", "remote HTTP and URL credentials rejected");
 expect(activate.includes(`${fixture.api.routes.activate}`) && /key,\s*installation_id/.test(activate), "activation contract", "POST /v1/activate with key and installation_id");
-expect(online.includes(`${fixture.api.routes.validate}`) && /token:\s*record\.token/.test(online) && /entitlement:/.test(online), "validation contract", "POST /v1/validate with token and entitlement");
+expect(online.includes(`${fixture.api.routes.validate}`) && /token:\s*record\??\.token/.test(online) && /entitlement:/.test(online), "validation contract", "POST /v1/validate with token and entitlement");
 expect(activationKey.includes(fixture.api.routes.activationKey) && activationKey.includes("dodo_payment_id"), "activation-key contract", fixture.api.routes.activationKey);
 expect(checkout.includes(fixture.api.routes.checkout) && checkout.includes("{ planId }"), "checkout contract", fixture.api.routes.checkout);
 

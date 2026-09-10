@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.11 - 2026-09-11
+
+### Release integrity
+
+- Prepared the next release from the canonical source after separating the published 1.3.10 artifact from the unreproducible local worktree.
+- Aligned CLI, embedded runtime, extension metadata, and release documentation on 1.3.11.
+
 ## 1.3.6 - 2026-09-07
 
 ### Release integrity

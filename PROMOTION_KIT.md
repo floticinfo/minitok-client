@@ -16,9 +16,9 @@ minitok gives AI coding tasks a workflow: research, plan, implement, verify, rev
 
 **Title:** minitok — verified repository-aware coding workflow for AI agents
 
-**Description:** minitok is a Node.js CLI that turns repository context into inspectable code changes through explicit research, planning, implementation, deterministic verification, review, repair, and evidence recording. The current published CLI is `@flotic/minitok@1.3.10`. It supports Anthropic, OpenAI, Google, OpenRouter, and OpenAI-compatible providers with local-first execution and opt-in telemetry.
+**Description:** minitok is a Node.js CLI that turns repository context into inspectable code changes through explicit research, planning, implementation, deterministic verification, review, repair, and evidence recording. The local canonical CLI is `@flotic/minitok@1.3.11`. Treat publication as unverified until the approved release manifest and registry evidence are available. It supports Anthropic, OpenAI, Google, OpenRouter, and OpenAI-compatible providers with local-first execution and opt-in telemetry.
 
-**Call to action:** Install with `npm install -g @flotic/minitok@1.3.10`, run `minitok doctor`, then initialize a repository with `minitok migrate`.
+**Call to action:** Install with `npm install -g @flotic/minitok@1.3.11`, run `minitok doctor`, then initialize a repository with `minitok migrate`.
 
 ## VS Code Marketplace submission
 
@@ -32,21 +32,34 @@ minitok gives AI coding tasks a workflow: research, plan, implement, verify, rev
 
 **Marketplace description:** Use the repository's `extension/README.md` as the long description. Publish only the generated versioned VSIX after `npm run release:extension`, `npm run extension:marketplace:check`, and operator approval.
 
+## Copy-ready post files
+
+The complete channel-specific copy is split into standalone files for direct review and pasting:
+
+- `promotion-posts/product-hunt.md`
+- `promotion-posts/reddit.md`
+- `promotion-posts/linkedin.md`
+- `promotion-posts/mcp-directory.md`
+
+These files are drafts for operator review. They do not publish automatically and should be checked against each platform's current rules before submission.
+
 ## MCP directory submission
 
 **Name:** minitok MCP
 
-**Transport:** local stdio and authenticated localhost HTTP; remote MCP is a separate explicitly configured deployment.
+**Transport:** local stdio, authenticated localhost HTTP, and an authenticated HTTPS remote MCP endpoint at `https://api.minitok.dev/mcp`.
 
-**Description:** Exposes repository-aware coding workflow controls to MCP clients with session authentication, entitlement enforcement, read/write policy boundaries, deterministic verification, and recorded evidence. It is not an AI model and does not replace the configured model provider.
+**Description:** Exposes repository-aware coding workflow controls to MCP clients with customer JWT authentication, paid entitlement enforcement, session binding and expiry, read-only remote tool boundaries, deterministic verification, and recorded evidence. It is not an AI model and does not replace the configured model provider.
 
 **Configuration note:** Use the installed package's `minitok mcp connect <host>` output. Never publish tokens, customer JWTs, installation-token files, or provider API keys.
 
 ## Product Hunt launch copy
 
-**Tagline:** AI coding with a verification loop, not just a code-generation transcript.
+**Tagline:** AI coding with a verification loop, not just code generation.
 
-**Maker comment:** minitok is a repository-aware CLI for teams that want AI-assisted changes to be planned, implemented, verified, reviewed, repaired, and recorded. The product works with multiple LLM providers and keeps execution local-first. We are publishing the demo procedure and raw benchmark evidence instead of making unsupported speed or accuracy claims.
+**Description:** minitok is a repository-aware coding workflow CLI that adds explicit research, planning, implementation, deterministic verification, review, repair, and evidence recording to AI-assisted development. It supports multiple LLM providers, VS Code integration, and authenticated MCP transports while keeping execution local-first. Telemetry is opt-in and disabled by default. This launch focuses on traceability and workflow structure rather than unsupported speed or accuracy claims.
+
+**Maker comment:** I built minitok because generating a diff is only one part of repository work. The difficult part is understanding the existing codebase, making a plan, running deterministic checks, reviewing failures, repairing the change, and preserving an inspectable record. minitok separates those stages into a repeatable workflow. I’m looking for feedback on the workflow boundaries, verification model, and evidence format. minitok is paid proprietary software; provider costs apply, and it does not guarantee correctness or deployment outcomes.
 
 ## Hacker News title and text
 

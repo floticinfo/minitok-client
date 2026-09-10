@@ -34,13 +34,14 @@ async function checkEntitlementOnline(options = {}) {
 
   const record = loadInstallationRecord(options.entitlementDir);
   const serverUrl = options.serverUrl;
-  if (!serverUrl || !record) {
+  const shouldValidate = Boolean(serverUrl && (record || options._validate));
+  if (!shouldValidate) {
     return { ...local, offline: true, offlineSemantics: "valid-signed-entitlement-until-expires_at" };
   }
 
   try {
     const response = await (options._validate || postValidation)(`${serverUrl.replace(/\/$/, "")}/v1/validate`, {
-      token: record.token,
+      token: record?.token,
       entitlement: options._loadArtifact ? options._loadArtifact() : undefined,
     });
     if (!response.ok || !response.body || response.body.valid !== true) {

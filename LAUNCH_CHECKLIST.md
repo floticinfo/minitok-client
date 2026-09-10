@@ -4,14 +4,15 @@
 
 - GitHub: https://github.com/floticinfo/minitok
 - npm: https://www.npmjs.com/package/@flotic/minitok
-- Current CLI: `@flotic/minitok@1.3.10`
+- Local canonical CLI: `@flotic/minitok@1.3.11`
+- Publication state: unverified until an approved release manifest and registry evidence are present
 - Website: https://minitok.dev
 - Docs: https://minitok.dev/docs
 
 ## Demo recording
 
 1. Create a disposable repository and record the exact commit.
-2. Run `npm install -g @flotic/minitok@1.3.10`.
+2. Run `npm install -g @flotic/minitok@1.3.11`.
 3. Run `minitok doctor` and show provider configuration without exposing keys.
 4. Run `minitok migrate`.
 5. Run a small task with tests and documentation.
@@ -23,6 +24,17 @@ Run `npm run demo:transcript -- C:\path\to\disposable-repository` to capture a s
 ## Current evidence status
 
 `DEMO_EVIDENCE.md` records a reproducible dry-run prerequisite check. `BENCHMARK_EVIDENCE.json` explicitly records that no real paired benchmark has been run. Do not publish performance claims until repeated baseline and minitok runs produce sanitized raw data.
+
+## Copy-ready submission files
+
+Use the channel-specific drafts below instead of extracting sections manually from the full promotion kit:
+
+- Product Hunt: `promotion-posts/product-hunt.md`
+- Reddit: `promotion-posts/reddit.md`
+- LinkedIn: `promotion-posts/linkedin.md`
+- MCP directory: `promotion-posts/mcp-directory.md`
+
+Review each draft, add the real demo or evidence links when available, and submit through the platform's official interface.
 
 ## Submission order
 
