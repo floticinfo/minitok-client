@@ -4,6 +4,7 @@ const { fetchWithTimeout } = require("../core/http");
 const { loadCustomerToken } = require("../auth/customer-token");
 const { OAuthFlow } = require("../auth/oauth");
 const { TokenStore } = require("../auth/token-store");
+const TRUSTED_MCP_AUTH_HOSTS = new Set(["api.minitok.dev"]);
 const REMOTE_MCP_TOOLS = Object.freeze(new Set(["minitok_status", "minitok_compact"]));
 
 const MCP_PROTOCOL_VERSION = "2024-11-05";
@@ -103,8 +104,10 @@ class RemoteMcpClient {
       const response = await fetchWithTimeout(metadataUrl, { headers: { Accept: "application/json" } }, this.timeoutMs);
       metadata = await response.json();
       if (!response.ok || !metadata?.authorization_servers?.[0]) throw new Error("Protected-resource metadata is invalid");
-      const serverUrl = metadata.authorization_servers[0];
-      const serverMetadataUrl = serverUrl.includes('/.well-known/') ? serverUrl : `${serverUrl.replace(/\/$/, "")}/.well-known/oauth-authorization-server`;
+      const serverUrl = new URL(metadata.authorization_servers[0]);
+      const resourceUrl = new URL(this.url);
+      if (serverUrl.protocol !== "https:" || (serverUrl.hostname !== resourceUrl.hostname && !TRUSTED_MCP_AUTH_HOSTS.has(serverUrl.hostname))) throw remoteError("Remote MCP authorization server is not trusted", "auth", { code: "REMOTE_OAUTH_UNTRUSTED_AUTHORITY" });
+      const serverMetadataUrl = serverUrl.pathname.includes('/.well-known/') ? serverUrl.toString() : `${serverUrl.toString().replace(/\/$/, "")}/.well-known/oauth-authorization-server`;
       const serverResponse = await fetchWithTimeout(serverMetadataUrl, { headers: { Accept: "application/json" } }, this.timeoutMs);
       const serverMetadata = await serverResponse.json();
       if (!serverResponse.ok || !serverMetadata.authorization_endpoint || !serverMetadata.token_endpoint) throw new Error("Authorization-server metadata is invalid");
@@ -113,7 +116,7 @@ class RemoteMcpClient {
       this.tokenStore.save(this.resourceKey, { resource: this.url, ...token, expires_at: token.expires_at || new Date(Date.now() + 2592000000).toISOString() });
       return this.token;
     } catch (error) {
-      if (error?.code === "REMOTE_MCP_ERROR") throw error;
+      if (error?.code === "REMOTE_MCP_ERROR" || error?.code === "REMOTE_OAUTH_UNTRUSTED_AUTHORITY") throw error;
       throw remoteError("Remote MCP OAuth discovery failed", "auth", { code: "REMOTE_OAUTH_DISCOVERY_FAILED", cause: error });
     }
   }

@@ -17,6 +17,9 @@ test("browser device auth contract", () => {
   assert.match(auth, /normalizeCustomerSession/);
   assert.match(auth, /token_type: string/);
   assert.match(auth, /openExternal/);
+  assert.match(auth, /url\.protocol !== "https:"/);
+  assert.match(auth, /api\.minitok\.dev/);
+  assert.match(auth, /url\.username \|\| url\.password/);
   assert.doesNotMatch(auth, /MINITOK_CUSTOMER_PASSWORD/);
   assert.doesNotMatch(auth, /console\.log\(.*access_token/);
 });

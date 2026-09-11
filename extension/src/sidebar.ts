@@ -31,6 +31,7 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
   }
 
   private async execute(args: string[], cwd: string | undefined): Promise<string> {
+    requireTrustedWorkspace(cwd);
     const cli = cliPath();
     const provider = this.context.workspaceState.get<string>("minitok.setting.provider", "");
     const model = this.context.workspaceState.get<string>("minitok.setting.model", "");
@@ -151,7 +152,7 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
     if (message.command === "open-diff") { if (cwd) await this.openDiff(cwd); return; }
     if (message.command === "restore-session") { if (cwd && message.checkpoint) await this.restoreCheckpoint(cwd, message.checkpoint); return; }
     if (message.command === "mcp-status") { await this.checkMcpHealth(); return; }
-    if (message.command === "mcp-connect") { await this.connectMcp(message.target); return; }
+    if (message.command === "mcp-connect") { requireTrustedWorkspace(workspacePath()); await this.connectMcp(message.target); return; }
     if (message.command === "mcp-list") { this.listMcpHosts(); return; }
     if (message.command === "history") { this.view?.webview.postMessage({ type: "history", items: this.context.workspaceState.get<Array<Record<string, unknown>>>("minitok.history", []) }); return; }
     if (message.command === "sessions") { this.view?.webview.postMessage({ type: "sessions", items: this.context.workspaceState.get<Array<Record<string, unknown>>>("minitok.history", []) }); return; }
@@ -163,7 +164,7 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
     if (message.command === "attach-problems") { const diagnostics = vscode.languages.getDiagnostics().flatMap(([uri, items]) => items.map(item => `${vscode.workspace.asRelativePath(uri)}:${item.range.start.line + 1} ${item.message}`)); this.view?.webview.postMessage({ type: "attachment", value: diagnostics.length ? `@problems\n${diagnostics.join("\n")}` : "" }); return; }
     if (message.command === "settings") { await this.readSettings(); await this.discoverModels(cwd, this.context.workspaceState.get<string>("minitok.setting.provider", "")); await this.checkUpdate(); return; }
     if (message.command === "save-settings") { await this.saveSettings(message); return; }
-    if (message.command === "update") { const release = cliRelease(this.context); const answer = await vscode.window.showInformationMessage(`Update minitok to ${release.version}?`, "Update", "Cancel"); if (answer === "Update") execFile("npm", ["install", "-g", `${release.packageName}@${release.version}`], { timeout: 120000, windowsHide: true }, (error, stdout, stderr) => this.view?.webview.postMessage({ type: "update-result", ok: !error, text: error ? stderr || error.message : stdout })); return; }
+    if (message.command === "update") { requireTrustedWorkspace(workspacePath()); const release = cliRelease(this.context); const answer = await vscode.window.showInformationMessage(`Update minitok to ${release.version}?`, "Update", "Cancel"); if (answer === "Update") execFile("npm", ["install", "-g", `${release.packageName}@${release.version}`], { timeout: 120000, windowsHide: true }, (error, stdout, stderr) => this.view?.webview.postMessage({ type: "update-result", ok: !error, text: error ? stderr || error.message : stdout })); return; }
     try {
       requireTrustedWorkspace(cwd);
       if (this.process) throw new Error("A minitok run is already active");
@@ -195,6 +196,7 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
     } finally { this.activeRunId = undefined; this.activeRunStartedAt = undefined; }
   }
   private async customerLogin(email?: string, password?: string) {
+    requireTrustedWorkspace(workspacePath());
     if (!email?.trim() || !password) { this.view?.webview.postMessage({ type: "auth-state", ok: false, text: "Email and password are required." }); return; }
     const env: NodeJS.ProcessEnv = { ...process.env, MINITOK_CUSTOMER_EMAIL: email.trim(), MINITOK_CUSTOMER_PASSWORD: password };
     execFile(cliPath(), ["auth", "customer-login", "--email-env", "MINITOK_CUSTOMER_EMAIL", "--password-env", "MINITOK_CUSTOMER_PASSWORD"], { cwd: workspacePath(), timeout: 30000, windowsHide: true, env }, async (error, stdout, stderr) => {
@@ -204,8 +206,9 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
       this.view?.webview.postMessage({ type: "auth-state", ok: result.allowed, text: result.allowed ? `Signed in with ${result.plan} plan.` : result.message || stdout });
     });
   }
-  private async discoverModels(cwd?: string, provider?: string) {
-    const cli = cliPath();
+private async discoverModels(cwd?: string, provider?: string) {
+     requireTrustedWorkspace(cwd);
+     const cli = cliPath();
     const args = ["models", "--discover"];
     if (provider) args.splice(1, 0, provider);
     execFile(cli, args, { cwd, timeout: 30000, windowsHide: true }, (error, stdout, stderr) => {
@@ -215,6 +218,7 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
     });
   }
   private async readInfo(cwd?: string) {
+    requireTrustedWorkspace(cwd);
     const cli = vscode.workspace.getConfiguration("minitok").get<string>("cliPath", "minitok");
     const commands = [["status"], ["doctor"], ["evolution", "status"], ["workspace", "current"]];
     const outputs: string[] = [];
@@ -277,6 +281,7 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
     this.view?.webview.postMessage({ type: "mcp-connect", ok: true, text: `Connected to ${host}. Backup: ${path.basename(backup)}` });
   }
   private async checkMcpHealth() {
+    requireTrustedWorkspace(workspacePath());
     const cli = cliPath();
     if (this.mcpProcess) { this.view?.webview.postMessage({ type: "mcp", ok: false, text: "MCP health check already running" }); return; }
     const configured = mcpCommand();
@@ -297,6 +302,7 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
 
   }
   private execGit(cwd: string, args: string[]): Promise<string> {
+    requireTrustedWorkspace(cwd);
     return new Promise((resolve, reject) => execFile("git", args, { cwd, timeout: 30000, windowsHide: true }, (error, stdout, stderr) => error ? reject(new Error(stderr || error.message)) : resolve(stdout)));
   }
   private async captureCheckpoint(cwd: string, checkpoint: string, metadata: Record<string, unknown>) {
@@ -343,6 +349,7 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
     this.view?.webview.postMessage({ type: "settings-saved" });
   }
   private async checkUpdate() {
+    requireTrustedWorkspace(workspacePath());
     const release = cliRelease(this.context); execFile("npm", ["view", release.packageName, "version", "--json"], { timeout: 10000, windowsHide: true }, (error, stdout) => this.view?.webview.postMessage({ type: "update", current: release.version, latest: error ? null : String(stdout).trim().replace(/^\"|\"$/g, "") }));
   }
   private async readSettings() {

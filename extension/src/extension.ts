@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { spawn, ChildProcessWithoutNullStreams } from "node:child_process";
 import { minitokPanel } from "./panel";
-import { spawnSpec } from "./workspace";
+import { spawnSpec, requireTrustedWorkspace } from "./workspace";
 import { minitokSidebar } from "./sidebar";
 import { cliPath, workspacePath, autoApprove, isCliCompatible, mcpCommand, mcpEnvironment, mcpAuthToken } from "./workspace";
 import { checkEntitlement, EntitlementState } from "./entitlement";
@@ -11,6 +11,8 @@ function extensionVersion(context: vscode.ExtensionContext) {
 }
 
 function runCli(cliPath: string, args: string[]): Promise<string> {
+  const cwd = workspacePath();
+  requireTrustedWorkspace(cwd);
   return new Promise((resolve, reject) => {
     const spec = spawnSpec(cliPath, args);
     const child = spawn(spec.command, spec.args, { cwd: workspacePath(), shell: spec.shell, windowsHide: true });
@@ -36,8 +38,8 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(vscode.commands.registerCommand("minitok.openPanel", () => minitokPanel.createOrShow(context)));
   context.subscriptions.push(vscode.commands.registerCommand("minitok.openSettings", () => vscode.commands.executeCommand("workbench.action.openSettings", "@ext:flotic.minitok-extension")));
   context.subscriptions.push(vscode.commands.registerCommand("minitok.mcpStatus", async () => {
-    try { await requireEntitlement(); } catch (error) { vscode.window.showErrorMessage(String(error)); return; }
-    output.show(true);
+try { await requireEntitlement(); requireTrustedWorkspace(workspacePath()); } catch (error) { vscode.window.showErrorMessage(String(error)); return; }
+     output.show(true);
     const command = mcpCommand();
     if (!command.length || !command[0]) { vscode.window.showErrorMessage("minitok MCP command is not configured"); return; }
     const processSpec = spawnSpec(command[0], command.slice(1));

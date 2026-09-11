@@ -19,7 +19,12 @@ const DEFAULT_SERVER = "https://api.minitok.dev";
 
 function serverUrl() {
   const configured = vscode.workspace.getConfiguration("minitok").get<string>("serverUrl", DEFAULT_SERVER).trim();
-  return configured.replace(/\/$/, "");
+  let url: URL;
+  try { url = new URL(configured); } catch { throw new Error("minitok.serverUrl must be a valid HTTPS URL"); }
+  const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
+  if ((url.protocol !== "https:" && !(loopback && url.protocol === "http:")) || url.username || url.password || url.search || url.hash || (url.pathname !== "/" && url.pathname !== "")) throw new Error("minitok.serverUrl must use HTTPS and contain only an origin");
+  if (!loopback && url.hostname !== "api.minitok.dev") throw new Error("minitok.serverUrl is not an allowed authentication origin");
+  return url.origin;
 }
 
 function expiry(session: ExtensionAuthState) {

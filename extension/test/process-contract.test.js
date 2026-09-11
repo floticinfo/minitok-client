@@ -75,6 +75,14 @@ test("MCP stdio transport contract", () => {
   assert.match(sidebar, /method, params: \{ \.\.\.params, authToken/);
 });
 
+test("all extension process paths require trusted workspaces", () => {
+  for (const source of [extension, panel, sidebar, entitlement]) assert.match(source, /requireTrustedWorkspace/);
+  assert.match(extension, /requireTrustedWorkspace\(workspacePath\(\)\)/);
+  assert.match(panel, /requireTrustedWorkspace\(cwd\)/);
+  assert.match(sidebar, /private async execute[\s\S]*?requireTrustedWorkspace\(cwd\)/);
+  assert.match(sidebar, /private async checkMcpHealth[\s\S]*?requireTrustedWorkspace\(workspacePath\(\)\)/);
+});
+
 test("sidebar process lifecycle contract", () => {
   assert.match(sidebar, /approval-timeout-ms/);
   assert.match(sidebar, /taskkill/);

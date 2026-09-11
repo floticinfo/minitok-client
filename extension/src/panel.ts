@@ -50,8 +50,9 @@ export class minitokPanel {
   private async handle(message: { command: string; task?: string }) {
     if (!message || !["status", "run", "dry-run", "stop"].includes(message.command)) { this.post(false, "Unsupported command"); return; }
     if (message.task !== undefined && (typeof message.task !== "string" || message.task.length > 20000)) { this.post(false, "Task is invalid or too long"); return; }
-    const cwd = workspacePath();
-    const cli = cliPath();
+const cwd = workspacePath();
+     const cli = cliPath();
+     requireTrustedWorkspace(cwd);
      try {
        if (message.command === "stop") { this.stopProcess(); this.post(true, "Run stopped."); return; }
        await requireEntitlement();

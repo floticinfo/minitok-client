@@ -9,6 +9,7 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const { setOwnerOnlyPermissions } = require("../utils/file-permissions");
+const { execFileSync } = require("child_process");
 
 const TOKENS_DIR = path.join(os.homedir(), ".minitok", "tokens");
 
@@ -31,7 +32,36 @@ class TokenStore {
    * Load stored token data for a provider.
    * @returns {({ access_token?: string, refresh_token?: string, expires_at?: string } & Record<string, unknown>) | null}
    */
+  _keychainName(provider) { return `minitok:${provider}`; }
+
+  _keychainLoad(provider) {
+    try {
+      if (process.platform === "win32") return JSON.parse(execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", `(Get-Secret -Name '${this._keychainName(provider)}' -AsPlainText -ErrorAction Stop | ConvertFrom-Json) | ConvertTo-Json -Compress`], { encoding: "utf8", timeout: 5000, windowsHide: true }).trim());
+      if (process.platform === "darwin") return JSON.parse(execFileSync("security", ["find-generic-password", "-s", this._keychainName(provider), "-w"], { encoding: "utf8", timeout: 5000 }).trim());
+      return JSON.parse(execFileSync("secret-tool", ["lookup", "service", "minitok", "provider", provider], { encoding: "utf8", timeout: 5000 }).trim());
+    } catch { return null; }
+  }
+
+  _keychainSave(provider, record) {
+    const payload = JSON.stringify(record);
+    try {
+      if (process.platform === "win32") { execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", `$secret = ConvertTo-SecureString '${payload.replace(/'/g, "''")}' -AsPlainText -Force; Set-Secret -Name '${this._keychainName(provider)}' -Secret $secret -ErrorAction Stop`], { stdio: "ignore", timeout: 5000, windowsHide: true }); return true; }
+      if (process.platform === "darwin") { execFileSync("security", ["add-generic-password", "-U", "-s", this._keychainName(provider), "-a", process.env.USER || "minitok", "-w", payload], { stdio: "ignore", timeout: 5000 }); return true; }
+      execFileSync("secret-tool", ["store", "--label", this._keychainName(provider), "service", "minitok", "provider", provider], { input: payload, stdio: ["pipe", "ignore", "ignore"], timeout: 5000 }); return true;
+    } catch { return false; }
+  }
+
+  _keychainRemove(provider) {
+    try {
+      if (process.platform === "win32") execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", `Remove-Secret -Name '${this._keychainName(provider)}' -ErrorAction SilentlyContinue`], { stdio: "ignore", timeout: 5000, windowsHide: true });
+      else if (process.platform === "darwin") execFileSync("security", ["delete-generic-password", "-s", this._keychainName(provider)], { stdio: "ignore", timeout: 5000 });
+      else execFileSync("secret-tool", ["clear", "service", "minitok", "provider", provider], { stdio: "ignore", timeout: 5000 });
+    } catch {}
+  }
+
   load(provider) {
+    const keychain = this._keychainLoad(provider);
+    if (keychain) return keychain;
     const fp = this._filePath(provider);
     try {
       const data = fs.readFileSync(fp, "utf-8");
@@ -47,11 +77,8 @@ class TokenStore {
   save(provider, tokenData) {
     this._ensureDir();
     const fp = this._filePath(provider);
-    const record = {
-      provider,
-      ...tokenData,
-      saved_at: new Date().toISOString(),
-    };
+    const record = { provider, ...tokenData, saved_at: new Date().toISOString() };
+    if (this._keychainSave(provider, record)) { try { fs.unlinkSync(this._filePath(provider)); } catch {} return; }
     const tmp = `${fp}.tmp.${process.pid}.${Math.random().toString(16).slice(2)}`;
     try {
       fs.writeFileSync(tmp, JSON.stringify(record, null, 2), { encoding: "utf-8", flag: "wx", mode: 0o600 });
@@ -68,6 +95,7 @@ class TokenStore {
    * Delete stored token for a provider.
    */
   remove(provider) {
+    this._keychainRemove(provider);
     const fp = this._filePath(provider);
     try {
       fs.unlinkSync(fp);
