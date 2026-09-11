@@ -78,7 +78,7 @@ class OAuthFlow {
    * @returns {Promise<object>} Token data with access_token, refresh_token, expires_at
    */
   async authorize(provider, authConfig = {}) {
-    const config = this._getConfig(provider, authConfig);
+    const config = provider === "mcp" ? this._getMcpConfig(authConfig) : this._getConfig(provider, authConfig);
     const { codeVerifier, codeChallenge } = this._generatePKCE();
     const state = crypto.randomBytes(16).toString("hex");
 
@@ -108,7 +108,7 @@ class OAuthFlow {
    * @returns {Promise<object>}
    */
   async refreshToken(provider, refreshToken, authConfig = {}) {
-    const config = this._getConfig(provider, authConfig);
+    const config = provider === "mcp" ? this._getMcpConfig(authConfig) : this._getConfig(provider, authConfig);
     const params = new URLSearchParams({
       grant_type: "refresh_token",
       refresh_token: refreshToken,
@@ -147,6 +147,12 @@ class OAuthFlow {
    * @param {object} overrides
    * @returns {object}
    */
+  _getMcpConfig(overrides = {}) {
+    const config = { name: "minitok MCP", client_id: "minitok-cli", client_secret: "", scope: "read", ...overrides };
+    if (!config.authorize_url || !config.token_url || !config.client_id) throw new AuthError("Incomplete MCP OAuth metadata");
+    return config;
+  }
+
   _getConfig(provider, overrides = {}) {
     const base = OAUTH_CONFIGS[provider];
     if (!base) {

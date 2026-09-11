@@ -2,6 +2,8 @@
 
 const { fetchWithTimeout } = require("../core/http");
 const { loadCustomerToken } = require("../auth/customer-token");
+const { OAuthFlow } = require("../auth/oauth");
+const { TokenStore } = require("../auth/token-store");
 const REMOTE_MCP_TOOLS = Object.freeze(new Set(["minitok_status", "minitok_compact"]));
 
 const MCP_PROTOCOL_VERSION = "2024-11-05";
@@ -49,13 +51,17 @@ class RemoteMcpClient {
     this.url = validateRemoteUrl(options.url);
     this.token = options.token || loadCustomerToken(options.tokenFile);
     this.accountOptions = options.accountOptions || {};
-    if (!this.token) throw remoteError("Customer JWT is required for remote MCP", "auth", { code: "REMOTE_AUTH_REQUIRED" });
+    this.allowOAuth = options.allowOAuth !== false;
+    this.clientId = options.clientId || "minitok-cli";
+    this.tokenStore = options.tokenStore || new TokenStore(options.tokensDir);
+    this.resourceKey = `mcp-${new URL(this.url).host}`;
+    if (!this.token) this.token = this.tokenStore.load(this.resourceKey)?.access_token || null;
     this.timeoutMs = options.timeoutMs || 10000;
     this.sessionId = null;
     this.nextId = 1;
   }
 
-  async request(method, params = {}) {
+  async request(method, params = {}, retried = false) {
     const id = this.nextId++;
     const headers = { Accept: "application/json", ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}) };
     if (this.sessionId) headers["Mcp-Session-Id"] = this.sessionId;
@@ -76,6 +82,12 @@ class RemoteMcpClient {
     }
     if (response.status >= 400) {
       const errorType = body?.error?.data?.type;
+      const challenge = response.headers.get("www-authenticate") || "";
+      const metadataMatch = challenge.match(/resource_metadata="([^"]+)"/);
+      if (response.status === 401 && this.allowOAuth && !this.token && !retried && metadataMatch) {
+        await this.authorizeFromMetadata(metadataMatch[1]);
+        return this.request(method, params, true);
+      }
       const classification = ["SESSION_REQUIRED", "SESSION_BINDING_MISMATCH"].includes(errorType) ? errorType : ["RATE_LIMITED", "RATE_LIMIT_DEGRADED"].includes(errorType) || response.status === 429 ? "rate_limit" : response.status === 401 || response.status === 403 ? "auth" : "protocol";
       throw remoteError(response.status === 401 || response.status === 403 ? "Remote MCP authentication or entitlement failed" : response.status === 429 ? "Remote MCP rate limit exceeded" : "Remote MCP HTTP protocol failure", classification, { status: response.status, body, errorType: errorType || null });
     }
@@ -83,6 +95,27 @@ class RemoteMcpClient {
     if (result?.error) throw remoteError(result.error.message || "Remote MCP protocol error", ["SESSION_REQUIRED", "SESSION_BINDING_MISMATCH"].includes(result.error.data?.type) ? result.error.data.type : ["RATE_LIMITED", "RATE_LIMIT_DEGRADED"].includes(result.error.data?.type) ? "rate_limit" : result.error.data?.type === "ENTITLEMENT_REQUIRED" ? "auth" : "protocol", { status: response.status, rpcError: result.error });
     if (!result || result.id !== id) throw remoteError("Remote MCP response did not match request", "protocol", { status: response.status });
     return result.result;
+  }
+
+  async authorizeFromMetadata(metadataUrl) {
+    let metadata;
+    try {
+      const response = await fetchWithTimeout(metadataUrl, { headers: { Accept: "application/json" } }, this.timeoutMs);
+      metadata = await response.json();
+      if (!response.ok || !metadata?.authorization_servers?.[0]) throw new Error("Protected-resource metadata is invalid");
+      const serverUrl = metadata.authorization_servers[0];
+      const serverMetadataUrl = serverUrl.includes('/.well-known/') ? serverUrl : `${serverUrl.replace(/\/$/, "")}/.well-known/oauth-authorization-server`;
+      const serverResponse = await fetchWithTimeout(serverMetadataUrl, { headers: { Accept: "application/json" } }, this.timeoutMs);
+      const serverMetadata = await serverResponse.json();
+      if (!serverResponse.ok || !serverMetadata.authorization_endpoint || !serverMetadata.token_endpoint) throw new Error("Authorization-server metadata is invalid");
+      const token = await new OAuthFlow({ openBrowser: this.accountOptions.openBrowser, port: this.accountOptions.port }).authorize("mcp", { authorize_url: serverMetadata.authorization_endpoint, token_url: serverMetadata.token_endpoint, client_id: this.clientId, scope: metadata.scopes_supported?.[0] || "read" });
+      this.token = token.access_token;
+      this.tokenStore.save(this.resourceKey, { resource: this.url, ...token, expires_at: token.expires_at || new Date(Date.now() + 2592000000).toISOString() });
+      return this.token;
+    } catch (error) {
+      if (error?.code === "REMOTE_MCP_ERROR") throw error;
+      throw remoteError("Remote MCP OAuth discovery failed", "auth", { code: "REMOTE_OAUTH_DISCOVERY_FAILED", cause: error });
+    }
   }
 
   async handshake() {

@@ -7,12 +7,13 @@ const crypto = require("node:crypto");
 const { setOwnerOnlyPermissions } = require("../../utils/file-permissions");
 const { postJson } = require("../../core/http");
 const { resolveServerUrl } = require("./server-config");
+const { normalizeCustomerSession } = require("../../auth/customer-session");
 
 const ACCOUNT_FILE = path.join(os.homedir(), ".minitok", "account", "session.json");
 
 function saveAccountSession(session, filePath = ACCOUNT_FILE) {
-  if (!session?.access_token || !session?.refresh_token) throw new TypeError("Account session is incomplete");
-  const normalized = { ...session, expires_at: session.expires_at || (Number.isFinite(Number(session.expires_in)) ? new Date(Date.now() + Number(session.expires_in) * 1000).toISOString() : undefined) };
+  const normalized = normalizeCustomerSession(session);
+  if (!normalized) throw new TypeError("Account session is incomplete");
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   const temp = `${filePath}.tmp.${process.pid}.${crypto.randomBytes(4).toString("hex")}`;
   fs.writeFileSync(temp, JSON.stringify({ ...normalized, saved_at: new Date().toISOString() }), { mode: 0o600, flag: "wx" });
@@ -22,8 +23,8 @@ function saveAccountSession(session, filePath = ACCOUNT_FILE) {
 }
 function loadAccountSession(filePath = ACCOUNT_FILE) {
   try {
-    const session = JSON.parse(fs.readFileSync(filePath, "utf8"));
-    if (!session || typeof session.access_token !== "string" || typeof session.refresh_token !== "string") return null;
+    const session = normalizeCustomerSession(JSON.parse(fs.readFileSync(filePath, "utf8")));
+    if (!session) return null;
     if (session.expires_at && Date.now() >= new Date(session.expires_at).getTime() - 60000) return { ...session, expired: true };
     return session;
   } catch { return null; }

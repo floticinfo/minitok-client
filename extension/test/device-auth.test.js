@@ -14,6 +14,8 @@ test("browser device auth contract", () => {
   assert.match(sidebar, /device-login/);
   assert.match(sidebar, /device-logout/);
   assert.match(auth, /context\.secrets\.store/);
+  assert.match(auth, /normalizeCustomerSession/);
+  assert.match(auth, /token_type: string/);
   assert.match(auth, /openExternal/);
   assert.doesNotMatch(auth, /MINITOK_CUSTOMER_PASSWORD/);
   assert.doesNotMatch(auth, /console\.log\(.*access_token/);

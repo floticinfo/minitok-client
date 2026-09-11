@@ -1,6 +1,17 @@
 import * as vscode from "vscode";
 
-export type ExtensionAuthState = { access_token: string; refresh_token: string; customer_id?: string; expires_in?: number; expires_at?: string };
+export type ExtensionAuthState = { access_token: string; refresh_token: string; customer_id?: string; token_type: string; expires_in?: number; expires_at?: string };
+
+type CustomerSessionResponse = { access_token?: string; accessToken?: string; refresh_token?: string; refreshToken?: string; customer_id?: string; customerId?: string; token_type?: string; tokenType?: string; expires_in?: number; expiresIn?: number; expires_at?: string; expiresAt?: string };
+
+function normalizeCustomerSession(value: CustomerSessionResponse): ExtensionAuthState | undefined {
+  const accessToken = value?.access_token || value?.accessToken;
+  const refreshToken = value?.refresh_token || value?.refreshToken;
+  if (!accessToken || !refreshToken) return undefined;
+  const expiresIn = Number(value.expires_in ?? value.expiresIn);
+  const expiresAt = value.expires_at || value.expiresAt || (Number.isFinite(expiresIn) && expiresIn > 0 ? new Date(Date.now() + expiresIn * 1000).toISOString() : undefined);
+  return { access_token: accessToken, refresh_token: refreshToken, customer_id: value.customer_id || value.customerId, token_type: value.token_type || value.tokenType || "Bearer", ...(Number.isFinite(expiresIn) && expiresIn > 0 ? { expires_in: expiresIn } : {}), ...(expiresAt ? { expires_at: expiresAt } : {}) };
+}
 export type AuthFailureKind = "login" | "entitlement" | "network";
 
 const SESSION_KEY = "minitok.secret.accountSession";
@@ -36,8 +47,10 @@ export async function readExtensionSession(context: vscode.ExtensionContext) {
   try { return JSON.parse(raw) as ExtensionAuthState; } catch { await context.secrets.delete(SESSION_KEY); return undefined; }
 }
 
-async function save(context: vscode.ExtensionContext, session: ExtensionAuthState) {
-  await context.secrets.store(SESSION_KEY, JSON.stringify({ ...session, expires_at: expiry(session) }));
+async function save(context: vscode.ExtensionContext, session: CustomerSessionResponse) {
+  const normalized = normalizeCustomerSession(session);
+  if (!normalized) throw new Error("Account session is incomplete");
+  await context.secrets.store(SESSION_KEY, JSON.stringify({ ...normalized, expires_at: expiry(normalized) }));
 }
 
 export async function refreshExtensionSession(context: vscode.ExtensionContext) {
@@ -48,7 +61,7 @@ export async function refreshExtensionSession(context: vscode.ExtensionContext) 
   try {
     const next = await request("/v1/auth/token/refresh", { refresh_token: session.refresh_token });
     await save(context, next);
-    return next as ExtensionAuthState;
+    return normalizeCustomerSession(next);
   } catch { return undefined; }
 }
 
@@ -65,7 +78,7 @@ export async function deviceLogin(context: vscode.ExtensionContext, onStatus: (t
     await new Promise(resolve => setTimeout(resolve, interval));
     try {
       const result = await request("/v1/auth/device/token", { device_code: start.device_code });
-      if (result.access_token && result.refresh_token) { await save(context, result); return result as ExtensionAuthState; }
+      if (result.access_token || result.accessToken) { await save(context, result); return normalizeCustomerSession(result); }
     } catch (error: any) {
       if (error?.message === "authorization_pending") continue;
       throw Object.assign(error instanceof Error ? error : new Error(String(error)), { kind: error?.kind || "login" });
