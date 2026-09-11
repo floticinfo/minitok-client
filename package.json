@@ -1,6 +1,6 @@
 {
   "name": "@flotic/minitok",
-  "version": "1.3.11",
+  "version": "1.3.12",
   "description": "Verified repository-aware coding workflow CLI for AI agents",
   "main": "src/index.js",
   "bin": {
@@ -28,6 +28,7 @@
     "promotion:trust": "node scripts/promotion-preview.mjs trust",
     "promotion:demo": "node scripts/promotion-demo.mjs",
     "benchmark:validate": "node scripts/real-benchmark-validate.mjs",
+    "video:kit": "node scripts/video-kit.mjs",
     "test": "node --test tests/**/*.js src/**/*.test.js",
     "lint": "eslint --max-warnings=0 bin src tests",
     "typecheck": "tsc -p tsconfig.json",
@@ -100,6 +101,9 @@
     "CHANGELOG.md",
     "DEMO_EVIDENCE.md",
     "BENCHMARK_EVIDENCE.json",
+    "VIDEO_MEASUREMENT_KIT.md",
+    "VIDEO_MEASUREMENT_RECORD.example.json",
+    "VIDEO_NARRATION.md",
     "PROMOTION_KIT.md",
     "LAUNCH_CHECKLIST.md",
     "promotion-posts/",

@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.12 - 2026-09-11
+
+### Fixes
+
+- Fixed Windows activation requests failing when fetch rejects manually supplied Content-Length headers.
+- Fixed activation CLI exit handling and repository-local configuration loading for `--repo` runs.
+- Synchronized the embedded Extension runtime with the CLI fixes.
+
 ## 1.3.11 - 2026-09-11
 
 ### Release integrity

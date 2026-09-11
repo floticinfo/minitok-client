@@ -130,10 +130,9 @@ function postJson(urlString, body, timeoutMs = 10000, extraHeaders = {}) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     const serialized = typeof body === "string" ? body : JSON.stringify(body);
-    const contentLength = Buffer.byteLength(serialized, "utf8");
     const opts = {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Content-Length": String(contentLength), ...extraHeaders },
+      headers: { "Content-Type": "application/json", ...extraHeaders },
       signal: controller.signal,
     };
     const dispatcher = getProxyDispatcher(urlString);

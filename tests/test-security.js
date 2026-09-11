@@ -276,6 +276,11 @@ describe("Medium: Config resolves from repoRoot", () => {
     clean(repoRoot);
   });
 
+  it("run pipeline uses repository-local configuration when configPath is omitted", () => {
+    const source = fs.readFileSync(p.join(__dirname, "../src/pipeline/loop.js"), "utf8");
+    assert.match(source, /const configPath = opts\.configPath \|\| path\.join\(repoRoot, "minitok\.yml"\)/);
+  });
+
   it("prefers explicit configPath over repoRoot", () => {
     const { loadConfig } = require("../src/config/loader");
     const d = tmpDir();

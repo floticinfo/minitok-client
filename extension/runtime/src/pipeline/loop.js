@@ -27,7 +27,8 @@ const { authorizeEntitlement } = require("../entitlement/policy");
 const { ALLOWED_FIELDS } = require("../evolution/sanitize");
 const { findEscalationModel } = require("../llm/models");
 const { resolveServerUrl } = require("../cli/commands/server-config");
-const { TEST_AUTHORIZATION } = require("./test-seam");
+let TEST_AUTHORIZATION = Object.freeze({});
+try { ({ TEST_AUTHORIZATION } = require("./test-seam")); } catch {}
 const git = require("../git/operations");
 const readline = require("readline");
 
@@ -206,8 +207,9 @@ async function promptConfirmation(changesResult, opts) {
 
 async function runPipelineInWorkspace(task, opts = {}) {
   const startTime = Date.now();
-  const config = loadConfig(opts.configPath, opts.overrides);
   const repoRoot = opts.repoRoot || process.cwd();
+  const configPath = opts.configPath || path.join(repoRoot, "minitok.yml");
+  const config = loadConfig(configPath, opts.overrides);
 
   if (!git.isGitRepo(repoRoot)) {
     throw new Error(`Not a git repository: ${repoRoot}`);
